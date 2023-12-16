@@ -233,7 +233,8 @@ int ceil_div(int a, int b) {
 template <typename value_t>
 CUTLASS_HOST_DEVICE value_t clz(value_t x) {
   for (int i = 31; i >= 0; --i) {
-    if ((1 << i) & x) return 31 - i;
+    if ((1 << i) & x)
+      return value_t(31 - i);
   }
   return 32;
 }

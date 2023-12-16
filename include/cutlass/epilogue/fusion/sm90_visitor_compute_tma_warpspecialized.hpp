@@ -237,6 +237,18 @@ struct Sm90TreeVisitor<
       Sm90Compute<homogeneous_multiply_add, ElementOutput, ElementCompute, RoundStyle>
     >;
 
+  using Params = typename Impl::Params;
+  using SharedStorage = typename Impl::SharedStorage;
+
+  CUTLASS_HOST_DEVICE
+  Sm90TreeVisitor() {}
+
+  CUTLASS_HOST_DEVICE
+  Sm90TreeVisitor(
+      Params const& params,
+      SharedStorage const& shared_storage)
+    : Impl(params, shared_storage) {}
+
   CUTLASS_DEVICE bool
   is_producer_load_needed() const {
     auto const& bcast_op = get<0>(Impl::ops);
@@ -251,8 +263,6 @@ struct Sm90TreeVisitor<
     auto const& added_op = get<2>(Impl::ops);
     return bcast_op.scalar != 0 || added_op.is_C_load_needed();
   }
-
-  using Impl::Sm90VisitorImpl;
 
   template <class CallbacksImpl>
   struct ConsumerStoreCallbacks : CallbacksImpl {
@@ -301,10 +311,9 @@ struct Sm90TreeVisitor<
   >
   CUTLASS_DEVICE auto
   get_consumer_store_callbacks(ConsumerStoreArgs<Args...> const& args) {
-    return ConsumerStoreCallbacks(
-      is_C_load_needed(),
-      Impl::get_consumer_store_callbacks<ReferenceSrc>(args)
-    );
+    auto callbacks_tuple = Impl::template get_consumer_store_callbacks<ReferenceSrc>(args);
+    return ConsumerStoreCallbacks<decltype(callbacks_tuple)>(
+        is_C_load_needed(), std::move(callbacks_tuple));
   }
 };
 
@@ -438,7 +447,7 @@ struct Sm90ReLUAuxStore {
         using VecType = uint_bit_t<V>;
         Tensor tC_rAux_vec = recast<VecType>(tC_rAux);
         Tensor tC_gAux_vec = recast<VecType>(tC_gAux);
-        Tensor tC_cAux_vec = tC_cAux.compose(make_layout(Int<size(tC_rAux_vec)>{}, Int<V>{}));
+        Tensor tC_cAux_vec = tC_cAux.compose(make_layout(Int<size(tC_rAux_vec)>{}, Int<V>{})); // only works if vector is logically sequential
         auto predicate_fn = [&] (auto&&... coords) { return elem_less(tC_cAux_vec(coords...), residue_mn); };
         copy_if(FunctionPredTensor(predicate_fn), tC_rAux_vec, tC_gAux_vec);
       }
@@ -475,7 +484,8 @@ struct Sm90ReLUAuxStore {
                       gAux, args.epi_tile, args.tiled_copy, args.thread_idx);
     Tensor tC_rAux = make_tensor<cutlass::uint1b_t>(shape(tC_gAux));                   // (CPY,CPY_M,CPY_N,EPI_M,EPI_N)
 
-    return ConsumerStoreCallbacks(cute::move(tC_rAux), cute::move(tC_gAux), args.tCcD, args.residue_mn, params);
+    return ConsumerStoreCallbacks<decltype(tC_rAux), decltype(tC_gAux), decltype(args.tCcD), decltype(args.residue_mn)>(
+        cute::move(tC_rAux), cute::move(tC_gAux), args.tCcD, args.residue_mn, params);
   }
 };
 } // namespace detail
@@ -532,7 +542,17 @@ struct Sm90TreeVisitor<
       Sm90Compute<Activation, ElementOutput, ElementCompute, RoundStyle>
     >;
 
-  using Impl::Sm90VisitorImpl;
+  using Params = typename Impl::Params;
+  using SharedStorage = typename Impl::SharedStorage;
+
+  CUTLASS_HOST_DEVICE
+  Sm90TreeVisitor() {}
+
+  CUTLASS_HOST_DEVICE
+  Sm90TreeVisitor(
+      Params const& params,
+      SharedStorage const& shared_storage)
+    : Impl(params, shared_storage) {}
 
   template <class CallbacksImpl>
   struct ConsumerStoreCallbacks : CallbacksImpl {
@@ -556,9 +576,8 @@ struct Sm90TreeVisitor<
   >
   CUTLASS_DEVICE auto
   get_consumer_store_callbacks(ConsumerStoreArgs<Args...> const& args) {
-    return ConsumerStoreCallbacks(
-      Impl::get_consumer_store_callbacks<ReferenceSrc>(args)
-    );
+    auto callbacks_tuple = Impl::template get_consumer_store_callbacks<ReferenceSrc>(args);
+    return ConsumerStoreCallbacks<decltype(callbacks_tuple)>(std::move(callbacks_tuple));
   }
 
 };
@@ -654,7 +673,7 @@ struct Sm90AuxLoad<
 
     CUTLASS_DEVICE void
     begin() {
-      if constexpr (decltype(rank(tC_rAux))::value == 5) {
+      if constexpr (decltype(cute::rank(tC_rAux))::value == 5) {
         if constexpr (EnableNullptr) {
           if (params.ptr_aux == nullptr) {
             return;
@@ -662,14 +681,14 @@ struct Sm90AuxLoad<
         }
 
         if (elem_less(repeat_like(residue_mn, _0{}), residue_mn)) { // (partially) in-bounds CTA tile
-          copy(tC_gAux, tC_rAux);
+          copy_aligned(tC_gAux, tC_rAux);
         }
       }
     }
 
     CUTLASS_DEVICE void
     previsit(int epi_m, int epi_n, int load_iteration, bool is_producer_load_needed) {
-      if constexpr (decltype(rank(tC_rAux))::value == 3) {
+      if constexpr (decltype(cute::rank(tC_rAux))::value == 3) {
         if constexpr (EnableNullptr) {
           if (params.ptr_aux == nullptr) {
             return;
@@ -677,7 +696,7 @@ struct Sm90AuxLoad<
         }
 
         if (elem_less(repeat_like(residue_mn, _0{}), residue_mn)) {
-          copy(tC_gAux(_,_,_,epi_m,epi_n), tC_rAux);
+          copy_aligned(tC_gAux(_,_,_,epi_m,epi_n), tC_rAux);
         }
       }
     }
@@ -686,7 +705,7 @@ struct Sm90AuxLoad<
     CUTLASS_DEVICE auto
     visit(Array<ElementAccumulator, FragmentSize> const& frg_acc, int epi_v, int epi_m, int epi_n) {
       using ElementRegister = typename remove_cvref_t<RTensor>::value_type;
-      if constexpr (decltype(rank(tC_rAux))::value == 3) {
+      if constexpr (decltype(cute::rank(tC_rAux))::value == 3) {
         return recast<Array<ElementRegister, FragmentSize>>(coalesce(tC_rAux))(epi_v);
       }
       else {
@@ -727,7 +746,8 @@ struct Sm90AuxLoad<
       }
     }
 
-    return ConsumerStoreCallbacks(cute::move(tC_rAux), cute::move(tC_gAux), args.residue_mn, params);
+    return ConsumerStoreCallbacks<decltype(tC_rAux), decltype(tC_gAux), decltype(args.residue_mn)>(
+        cute::move(tC_rAux), cute::move(tC_gAux), args.residue_mn, params);
   }
 };
 

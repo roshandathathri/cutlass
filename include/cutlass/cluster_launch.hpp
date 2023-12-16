@@ -35,6 +35,7 @@
 
 #pragma once
 
+#include <cstdio>
 #include <cuda_runtime_api.h>
 #include "cutlass/cutlass.h"
 #include "cutlass/trace.h"
@@ -43,6 +44,7 @@
 #include <cuda/std/type_traits>
 #else
 #include <type_traits>
+#include <cstdio>
 #endif
 
 #if ((__CUDACC_VER_MAJOR__ >= 12) || ((__CUDACC_VER_MAJOR__ == 11) && (__CUDACC_VER_MINOR__ >= 8)))
