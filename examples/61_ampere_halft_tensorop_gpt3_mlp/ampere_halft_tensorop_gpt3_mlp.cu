@@ -853,8 +853,10 @@ void constructOps(cutlass::gemm::GemmCoord& problem_size1,
   cutlass::HostTensor<ElementInputA2, LayoutInputA2>& tensor_a2, 
   cutlass::HostTensor<ElementIntermediateB2, LayoutIntermediateB2>& tensor_b2, 
   cutlass::HostTensor<ElementOutput, LayoutOutput>& tensor_o, 
-  Gemm1* gemm_op1, 
-  Gemm2* gemm_op2) {
+  Gemm1* gemm_op1,
+  Gemm2* gemm_op2, 
+  cutlass::device_memory::allocation<uint8_t>* workspace1, 
+  cutlass::device_memory::allocation<uint8_t>* workspace2) {
 
   // Initialize alpha and beta for dot product computation
   ElementComputeEpilogue alpha = ElementComputeEpilogue(1);
@@ -877,14 +879,6 @@ void constructOps(cutlass::gemm::GemmCoord& problem_size1,
                                      {alpha, beta},          // <- tuple of alpha and beta
                                      SplitKSlices2};        // <- k-dimension split factor
 
-  // Using the arguments, query for extra workspace required for matrix multiplication computation
-  size_t workspace_size1 = Gemm1::get_workspace_size(arguments1);
-  size_t workspace_size2 = Gemm2::get_workspace_size(arguments2);
-
-  // Allocate workspace memory
-  cutlass::device_memory::allocation<uint8_t> workspace1(workspace_size1);
-  cutlass::device_memory::allocation<uint8_t> workspace2(workspace_size2);
-
   cutlass::Status status;
 
   // Check the problem size is supported or not 
@@ -893,10 +887,18 @@ void constructOps(cutlass::gemm::GemmCoord& problem_size1,
   status = gemm_op2->can_implement(arguments2);
   CUTLASS_CHECK(status);
 
+  // Using the arguments, query for extra workspace required for matrix multiplication computation
+  size_t workspace_size1 = Gemm1::get_workspace_size(arguments1);
+  size_t workspace_size2 = Gemm2::get_workspace_size(arguments2);
+
+  // Allocate workspace memory
+  workspace1->reset(workspace_size1);
+  workspace2->reset(workspace_size2);
+
   // Initialize CUTLASS kernel with arguments and workspace pointer
-  status = gemm_op1->initialize(arguments1, workspace1.get());
+  status = gemm_op1->initialize(arguments1, workspace1->get());
   CUTLASS_CHECK(status);
-  status = gemm_op2->initialize(arguments2, workspace2.get());
+  status = gemm_op2->initialize(arguments2, workspace2->get());
   CUTLASS_CHECK(status);
 }
 
@@ -947,13 +949,17 @@ int run(Options &options) {
   // Create the GEMM ops
   std::vector<Gemm1> gemm_op1(num_devices_per_node);
   std::vector<Gemm2> gemm_op2(num_devices_per_node);
+  // Create the workspaces for the GEMM ops
+  std::vector<cutlass::device_memory::allocation<uint8_t>> workspace1(num_devices_per_node);
+  std::vector<cutlass::device_memory::allocation<uint8_t>> workspace2(num_devices_per_node);
 
   // Construct the GEMM op on each device on this process/node
   for (int i=0; i<num_devices_per_node; i++) {
     CUDACHECK(cudaSetDevice(i));
     constructOps(problem_size1, problem_size2,
       tensor_a[i], tensor_b[i], tensor_a2[i], tensor_b2[i], tensor_o[i], 
-      &gemm_op1[i], &gemm_op2[i]);
+      &gemm_op1[i], &gemm_op2[i],
+      &workspace1[i], &workspace2[i]);
   }
 
   // Result structure
