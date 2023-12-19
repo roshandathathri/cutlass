@@ -93,9 +93,12 @@ using ShapeMMAThreadBlock2 =
 // This code section describes tile size <M, N, K> a warp will compute
 using ShapeMMAWarp1 = cutlass::gemm::GemmShape<64, 64, 32>;
 using ShapeMMAWarp2 = cutlass::gemm::GemmShape<64, 64, 32>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 4;
-constexpr int NumStages2 = 4;
+constexpr int NumStages1 = 3;
+constexpr int NumStages2 = 3;
 // Split K dimension into 1 partitions
 constexpr int SplitKSlices1 = 1;
 constexpr int SplitKSlices2 = 1;
@@ -104,15 +107,18 @@ constexpr int SplitKSlices2 = 1;
 
 // This code section describes the tile size <M, N, K> a thread block will compute
 using ShapeMMAThreadBlock1 =
-    cutlass::gemm::GemmShape<256, 128, 32>;
+    cutlass::gemm::GemmShape<160, 128, 32>;
 using ShapeMMAThreadBlock2 =
     cutlass::gemm::GemmShape<256, 128, 32>;
 // This code section describes tile size <M, N, K> a warp will compute
-using ShapeMMAWarp1 = cutlass::gemm::GemmShape<64, 64, 32>;
+using ShapeMMAWarp1 = cutlass::gemm::GemmShape<80, 64, 32>;
 using ShapeMMAWarp2 = cutlass::gemm::GemmShape<64, 64, 32>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 5;
-constexpr int NumStages2 = 5;
+constexpr int NumStages1 = 4;
+constexpr int NumStages2 = 3;
 // Split K dimension into 1 partitions
 constexpr int SplitKSlices1 = 1;
 constexpr int SplitKSlices2 = 1;
@@ -127,9 +133,12 @@ using ShapeMMAThreadBlock2 =
 // This code section describes tile size <M, N, K> a warp will compute
 using ShapeMMAWarp1 = cutlass::gemm::GemmShape<64, 64, 32>;
 using ShapeMMAWarp2 = cutlass::gemm::GemmShape<64, 64, 32>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 5;
-constexpr int NumStages2 = 5;
+constexpr int NumStages1 = 3;
+constexpr int NumStages2 = 3;
 // Split K dimension into 1 partitions
 constexpr int SplitKSlices1 = 1;
 constexpr int SplitKSlices2 = 1;
@@ -144,9 +153,12 @@ using ShapeMMAThreadBlock2 =
 // This code section describes tile size <M, N, K> a warp will compute
 using ShapeMMAWarp1 = cutlass::gemm::GemmShape<80, 64, 32>;
 using ShapeMMAWarp2 = cutlass::gemm::GemmShape<64, 64, 32>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 4;
-constexpr int NumStages2 = 5;
+constexpr int NumStages1 = 3;
+constexpr int NumStages2 = 3;
 // Split K dimension into 1 partitions
 constexpr int SplitKSlices1 = 1;
 constexpr int SplitKSlices2 = 1;
@@ -161,9 +173,12 @@ using ShapeMMAThreadBlock2 =
 // This code section describes tile size <M, N, K> a warp will compute
 using ShapeMMAWarp1 = cutlass::gemm::GemmShape<64, 64, 32>;
 using ShapeMMAWarp2 = cutlass::gemm::GemmShape<64, 64, 32>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 4;
-constexpr int NumStages2 = 4;
+constexpr int NumStages1 = 3;
+constexpr int NumStages2 = 3;
 // Split K dimension into 1 partitions
 constexpr int SplitKSlices1 = 1;
 constexpr int SplitKSlices2 = 1;
@@ -173,15 +188,18 @@ constexpr int SplitKSlices2 = 1;
 
 // This code section describes the tile size <M, N, K> a thread block will compute
 using ShapeMMAThreadBlock1 =
-    cutlass::gemm::GemmShape<256, 128, 64>;
+    cutlass::gemm::GemmShape<256, 128, 32>;
 using ShapeMMAThreadBlock2 =
-    cutlass::gemm::GemmShape<256, 128, 64>;
+    cutlass::gemm::GemmShape<256, 128, 32>;
 // This code section describes tile size <M, N, K> a warp will compute
-using ShapeMMAWarp1 = cutlass::gemm::GemmShape<64, 64, 64>;
-using ShapeMMAWarp2 = cutlass::gemm::GemmShape<64, 64, 64>;
+using ShapeMMAWarp1 = cutlass::gemm::GemmShape<64, 64, 32>;
+using ShapeMMAWarp2 = cutlass::gemm::GemmShape<64, 64, 32>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 4;
-constexpr int NumStages2 = 4;
+constexpr int NumStages1 = 3;
+constexpr int NumStages2 = 3;
 // Split K dimension into 1 partitions
 constexpr int SplitKSlices1 = 1;
 constexpr int SplitKSlices2 = 1;
@@ -190,137 +208,161 @@ constexpr int SplitKSlices2 = 1;
 
 // This code section describes the tile size <M, N, K> a thread block will compute
 using ShapeMMAThreadBlock1 =
-    cutlass::gemm::GemmShape<128, 256, 64>;
+    cutlass::gemm::GemmShape<256, 64, 64>;
 using ShapeMMAThreadBlock2 =
-    cutlass::gemm::GemmShape<128, 256, 64>;
+    cutlass::gemm::GemmShape<256, 128, 32>;
 // This code section describes tile size <M, N, K> a warp will compute
-using ShapeMMAWarp1 = cutlass::gemm::GemmShape<64, 64, 64>;
-using ShapeMMAWarp2 = cutlass::gemm::GemmShape<64, 64, 64>;
+using ShapeMMAWarp1 = cutlass::gemm::GemmShape<64, 32, 64>;
+using ShapeMMAWarp2 = cutlass::gemm::GemmShape<64, 64, 32>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 3;
+constexpr int NumStages1 = 4;
 constexpr int NumStages2 = 3;
 // Split K dimension into 1 partitions
-constexpr int SplitKSlices1 = 2;
+constexpr int SplitKSlices1 = 1;
 constexpr int SplitKSlices2 = 1;
 
 #elif BATCH_SIZE == 128
 
 // This code section describes the tile size <M, N, K> a thread block will compute
 using ShapeMMAThreadBlock1 =
-    cutlass::gemm::GemmShape<128, 256, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 using ShapeMMAThreadBlock2 =
-    cutlass::gemm::GemmShape<128, 256, 32>;
+    cutlass::gemm::GemmShape<256, 64, 64>;
 // This code section describes tile size <M, N, K> a warp will compute
-using ShapeMMAWarp1 = cutlass::gemm::GemmShape<64, 128, 32>;
-using ShapeMMAWarp2 = cutlass::gemm::GemmShape<64, 128, 32>;
+using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 32, 64>;
+using ShapeMMAWarp2 = cutlass::gemm::GemmShape<64, 32, 64>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 3;
-constexpr int NumStages2 = 3;
+constexpr int NumStages1 = 4;
+constexpr int NumStages2 = 4;
 // Split K dimension into 1 partitions
-constexpr int SplitKSlices1 = 3;
-constexpr int SplitKSlices2 = 3;
+constexpr int SplitKSlices1 = 2;
+constexpr int SplitKSlices2 = 1;
 
 #elif BATCH_SIZE == 64
 
 // This code section describes the tile size <M, N, K> a thread block will compute
 using ShapeMMAThreadBlock1 =
-    cutlass::gemm::GemmShape<64, 256, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 using ShapeMMAThreadBlock2 =
-    cutlass::gemm::GemmShape<64, 256, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 // This code section describes tile size <M, N, K> a warp will compute
-using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 128, 32>;
-using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 128, 32>;
+using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 32, 64>;
+using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 64>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 3;
-constexpr int NumStages2 = 3;
+constexpr int NumStages1 = 4;
+constexpr int NumStages2 = 4;
 // Split K dimension into 1 partitions
-constexpr int SplitKSlices1 = 6;
-constexpr int SplitKSlices2 = 3;
+constexpr int SplitKSlices1 = 2;
+constexpr int SplitKSlices2 = 2;
 
 #elif BATCH_SIZE == 32
 
 // This code section describes the tile size <M, N, K> a thread block will compute
 using ShapeMMAThreadBlock1 =
-    cutlass::gemm::GemmShape<32, 256, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 using ShapeMMAThreadBlock2 =
-    cutlass::gemm::GemmShape<32, 128, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 // This code section describes tile size <M, N, K> a warp will compute
-using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 64, 32>;
-using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 32>;
+using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 32, 64>;
+using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 64>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 3;
-constexpr int NumStages2 = 3;
+constexpr int NumStages1 = 4;
+constexpr int NumStages2 = 4;
 // Split K dimension into 1 partitions
-constexpr int SplitKSlices1 = 4;
-constexpr int SplitKSlices2 = 3;
+constexpr int SplitKSlices1 = 2;
+constexpr int SplitKSlices2 = 2;
 
 #elif BATCH_SIZE == 16
 
 // This code section describes the tile size <M, N, K> a thread block will compute
 using ShapeMMAThreadBlock1 =
-    cutlass::gemm::GemmShape<32, 256, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 using ShapeMMAThreadBlock2 =
-    cutlass::gemm::GemmShape<32, 128, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 // This code section describes tile size <M, N, K> a warp will compute
-using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 64, 32>;
-using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 32>;
+using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 32, 64>;
+using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 64>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 3;
-constexpr int NumStages2 = 3;
+constexpr int NumStages1 = 4;
+constexpr int NumStages2 = 4;
 // Split K dimension into 1 partitions
-constexpr int SplitKSlices1 = 4;
-constexpr int SplitKSlices2 = 3;
+constexpr int SplitKSlices1 = 2;
+constexpr int SplitKSlices2 = 2;
 
 #elif BATCH_SIZE == 8
 
 // This code section describes the tile size <M, N, K> a thread block will compute
 using ShapeMMAThreadBlock1 =
-    cutlass::gemm::GemmShape<32, 256, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 using ShapeMMAThreadBlock2 =
-    cutlass::gemm::GemmShape<32, 128, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 // This code section describes tile size <M, N, K> a warp will compute
-using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 64, 32>;
-using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 32>;
+using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 32, 64>;
+using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 64>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 3;
-constexpr int NumStages2 = 3;
+constexpr int NumStages1 = 4;
+constexpr int NumStages2 = 4;
 // Split K dimension into 1 partitions
-constexpr int SplitKSlices1 = 4;
-constexpr int SplitKSlices2 = 3;
+constexpr int SplitKSlices1 = 2;
+constexpr int SplitKSlices2 = 2;
 
 #elif BATCH_SIZE == 4
 
 // This code section describes the tile size <M, N, K> a thread block will compute
 using ShapeMMAThreadBlock1 =
-    cutlass::gemm::GemmShape<32, 256, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 using ShapeMMAThreadBlock2 =
-    cutlass::gemm::GemmShape<32, 128, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 // This code section describes tile size <M, N, K> a warp will compute
-using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 64, 32>;
-using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 32>;
+using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 32, 64>;
+using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 64>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 3;
-constexpr int NumStages2 = 3;
+constexpr int NumStages1 = 4;
+constexpr int NumStages2 = 4;
 // Split K dimension into 1 partitions
-constexpr int SplitKSlices1 = 4;
-constexpr int SplitKSlices2 = 3;
+constexpr int SplitKSlices1 = 2;
+constexpr int SplitKSlices2 = 2;
 
 #elif BATCH_SIZE == 2
 
 // This code section describes the tile size <M, N, K> a thread block will compute
 using ShapeMMAThreadBlock1 =
-    cutlass::gemm::GemmShape<32, 256, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 using ShapeMMAThreadBlock2 =
-    cutlass::gemm::GemmShape<32, 128, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 // This code section describes tile size <M, N, K> a warp will compute
-using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 64, 32>;
-using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 32>;
+using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 32, 64>;
+using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 64>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 3;
-constexpr int NumStages2 = 3;
+constexpr int NumStages1 = 4;
+constexpr int NumStages2 = 4;
 // Split K dimension into 1 partitions
-constexpr int SplitKSlices1 = 4;
-constexpr int SplitKSlices2 = 3;
+constexpr int SplitKSlices1 = 2;
+constexpr int SplitKSlices2 = 2;
 
 #else 
 
@@ -328,18 +370,21 @@ constexpr int SplitKSlices2 = 3;
 
 // This code section describes the tile size <M, N, K> a thread block will compute
 using ShapeMMAThreadBlock1 =
-    cutlass::gemm::GemmShape<32, 256, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 using ShapeMMAThreadBlock2 =
-    cutlass::gemm::GemmShape<32, 128, 32>;
+    cutlass::gemm::GemmShape<64, 64, 64>;
 // This code section describes tile size <M, N, K> a warp will compute
-using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 64, 32>;
-using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 32>;
+using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 32, 64>;
+using ShapeMMAWarp2 = cutlass::gemm::GemmShape<32, 32, 64>;
+// This code section describes the size <M, N, K> of MMA op
+using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
+using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
-constexpr int NumStages1 = 3;
-constexpr int NumStages2 = 3;
+constexpr int NumStages1 = 4;
+constexpr int NumStages2 = 4;
 // Split K dimension into 1 partitions
-constexpr int SplitKSlices1 = 4;
-constexpr int SplitKSlices2 = 3;
+constexpr int SplitKSlices1 = 2;
+constexpr int SplitKSlices2 = 2;
 
 #endif
 
@@ -364,22 +409,28 @@ constexpr ncclDataType_t ElementNcclAllreduceReference
                               = ncclFloat;
 
 // The code section below describes matrix layout of input and output matrices. 
+#if BATCH_SIZE >= 8
 // All matrices are in RowMajor
 using LayoutInputA1 = cutlass::layout::RowMajor;
 using LayoutInputB1 = cutlass::layout::RowMajor;
 using LayoutInputA2 = cutlass::layout::RowMajor;
 using LayoutIntermediateB2 = cutlass::layout::RowMajor;
 using LayoutOutput = cutlass::layout::RowMajor;
+#else
+// Only A matrices are in RowMajor; the other matrices are in ColumnMajor
+// (this is to avoid cutlass error: Error Misaligned Operand at: 876)
+using LayoutInputA1 = cutlass::layout::RowMajor;
+using LayoutInputB1 = cutlass::layout::ColumnMajor;
+using LayoutInputA2 = cutlass::layout::RowMajor;
+using LayoutIntermediateB2 = cutlass::layout::ColumnMajor;
+using LayoutOutput = cutlass::layout::ColumnMajor;
+#endif
 
 // This code section describes whether you want to use tensor cores or regular SIMT cores on GPU SM
 using MMAOp = cutlass::arch::OpClassTensorOp;
 
 // This code section describes CUDA SM architecture number
 using SmArch = cutlass::arch::Sm80;
-
-// This code section describes the size <M, N, K> of MMA op
-using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
-using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 
 // This code section describes how threadblocks are scheduled on GPU
 using SwizzleThreadBlock = cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>;  // <- ??
@@ -394,21 +445,24 @@ using EpilogueOp = cutlass::epilogue::thread::LinearCombination<
     ElementAccumulator,                                // <- data type of accumulator
     ElementComputeEpilogue>;  // <- data type for alpha/beta in linear combination function
 
-using Gemm1 = cutlass::gemm::device::Gemm<ElementInputA1,
-                                         LayoutInputA1,
-                                         ElementInputB1,
-                                         LayoutInputB1,
-                                         ElementIntermediateB2,
-                                         LayoutIntermediateB2,
-                                         ElementAccumulator,
-                                         MMAOp,
-                                         SmArch,
-                                         ShapeMMAThreadBlock1,
-                                         ShapeMMAWarp1,
-                                         ShapeMMAOp1,
-                                         EpilogueOp,
-                                         SwizzleThreadBlock,
-                                         NumStages1>;
+  using Gemm1 = cutlass::gemm::device::Gemm<ElementInputA1,
+                                          LayoutInputA1,
+                                          ElementInputB1,
+                                          LayoutInputB1,
+                                          ElementIntermediateB2,
+                                          LayoutIntermediateB2,
+                                          ElementAccumulator,
+                                          MMAOp,
+                                          SmArch,
+                                          ShapeMMAThreadBlock1,
+                                          ShapeMMAWarp1,
+                                          ShapeMMAOp1,
+                                          EpilogueOp,
+                                          SwizzleThreadBlock,
+                                          NumStages1, 
+                                          8,
+                                          8,
+                                          true>;
 
 using Gemm2 = cutlass::gemm::device::Gemm<ElementInputA2,
                                          LayoutInputA2,
@@ -424,7 +478,10 @@ using Gemm2 = cutlass::gemm::device::Gemm<ElementInputA2,
                                          ShapeMMAOp2,
                                          EpilogueOp,
                                          SwizzleThreadBlock,
-                                         NumStages2>;
+                                         NumStages2,
+                                         8,
+                                         8,
+                                         true>;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -983,7 +1040,7 @@ int run(Options &options) {
         return -1;
       }
     }
-
+    
     // TODO(roshan): Replace with MSCCLPP AllReduce
     // Launch all-reduce on each device on this process/node
     NCCLCHECK(ncclGroupStart());
@@ -992,6 +1049,7 @@ int run(Options &options) {
             tensor_o[i].size(), ElementNcclAllreduce, ncclSum,
             comms[i], streams[i]));
     }
+
     NCCLCHECK(ncclGroupEnd());
 
     // Record an event when the AllReduce is complete
@@ -1065,7 +1123,14 @@ int run(Options &options) {
     relu_time_ms[i] /= static_cast<float>(options.iterations);
     gemm2_time_ms[i] /= static_cast<float>(options.iterations);
     comm_time_ms[i] /= static_cast<float>(options.iterations);
-    runtime_ms[i] = gemm1_time_ms[i] + relu_time_ms[i] + gemm2_time_ms[i] + comm_time_ms[i];
+    result.error = cudaEventElapsedTime(&time_ms, 
+      events[i][0], 
+      events[i][options.iterations * kNumEventsPerIterationPerDevice - 1]);
+    if (result.error != cudaSuccess) {
+      std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
+      return -1;
+    }
+    runtime_ms[i] = time_ms / static_cast<float>(options.iterations);
   }
 
   // Cleanup
@@ -1156,7 +1221,7 @@ int run(Options &options) {
 
   if (passed && (rank == 0)) {
     if (options.csv) {
-      std::cout << "Hidden size,Batch size,#Ranks:Devices,GEMM1 Time (ms),ReLU Time (ms),GEMM2 Time (ms),Comm. Time (ms),Total Time (ms),GFLOPS" << std::endl;
+      std::cout << "Hidden size,Batch size,#Ranks,#Devices,GEMM1 Time (ms),ReLU Time (ms),GEMM2 Time (ms),Comm. Time (ms),Total Time (ms),GFLOPS" << std::endl;
     } else {
       std::cout << "Hidden size\t| Batch size\t| Rank:Device\t| GEMM1 Time (ms)\t| ReLU Time (ms)\t| GEMM2 Time (ms)\t| Comm. Time (ms)\t| Total Time (ms)\t| GFLOPS" << std::endl;
     }
@@ -1171,7 +1236,8 @@ int run(Options &options) {
           os << std::fixed << std::setprecision(3);
           os << options.hidden_size << ",";
           os << options.batch_size << ",";
-          os << num_ranks << ":" << num_devices_per_node << ",";
+          os << num_ranks << ",";
+          os << num_devices_per_node << ",";
           os << gemm1_time_ms[0] << ",";
           os << relu_time_ms[0] << ",";
           os << gemm2_time_ms[0] << ",";
