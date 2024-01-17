@@ -183,7 +183,6 @@ constexpr int NumStages2 = 3;
 constexpr int SplitKSlices1 = 1;
 constexpr int SplitKSlices2 = 1;
 
-// TODO(roshan) all hyperparameters below result in CUTLASS InternalError: fix the hyperparameters
 #elif BATCH_SIZE == 512
 
 // This code section describes the tile size <M, N, K> a thread block will compute
@@ -228,11 +227,11 @@ constexpr int SplitKSlices2 = 1;
 
 // This code section describes the tile size <M, N, K> a thread block will compute
 using ShapeMMAThreadBlock1 =
-    cutlass::gemm::GemmShape<64, 64, 64>;
+    cutlass::gemm::GemmShape<256, 64, 64>;
 using ShapeMMAThreadBlock2 =
     cutlass::gemm::GemmShape<256, 64, 64>;
 // This code section describes tile size <M, N, K> a warp will compute
-using ShapeMMAWarp1 = cutlass::gemm::GemmShape<32, 32, 64>;
+using ShapeMMAWarp1 = cutlass::gemm::GemmShape<64, 32, 64>;
 using ShapeMMAWarp2 = cutlass::gemm::GemmShape<64, 32, 64>;
 // This code section describes the size <M, N, K> of MMA op
 using ShapeMMAOp1 = cutlass::gemm::GemmShape<16, 8, 16>;
@@ -240,7 +239,7 @@ using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
 constexpr int NumStages1 = 4;
 constexpr int NumStages2 = 4;
-// Split K dimension into 1 partitions
+// Split K dimension into 2 partitions
 constexpr int SplitKSlices1 = 2;
 constexpr int SplitKSlices2 = 1;
 
@@ -260,7 +259,7 @@ using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
 constexpr int NumStages1 = 4;
 constexpr int NumStages2 = 4;
-// Split K dimension into 1 partitions
+// Split K dimension into 2 partitions
 constexpr int SplitKSlices1 = 2;
 constexpr int SplitKSlices2 = 2;
 
@@ -280,7 +279,7 @@ using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
 constexpr int NumStages1 = 4;
 constexpr int NumStages2 = 4;
-// Split K dimension into 1 partitions
+// Split K dimension into 2 partitions
 constexpr int SplitKSlices1 = 2;
 constexpr int SplitKSlices2 = 2;
 
@@ -300,7 +299,7 @@ using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
 constexpr int NumStages1 = 4;
 constexpr int NumStages2 = 4;
-// Split K dimension into 1 partitions
+// Split K dimension into 2 partitions
 constexpr int SplitKSlices1 = 2;
 constexpr int SplitKSlices2 = 2;
 
@@ -320,7 +319,7 @@ using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
 constexpr int NumStages1 = 4;
 constexpr int NumStages2 = 4;
-// Split K dimension into 1 partitions
+// Split K dimension into 2 partitions
 constexpr int SplitKSlices1 = 2;
 constexpr int SplitKSlices2 = 2;
 
@@ -340,7 +339,7 @@ using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
 constexpr int NumStages1 = 4;
 constexpr int NumStages2 = 4;
-// Split K dimension into 1 partitions
+// Split K dimension into 2 partitions
 constexpr int SplitKSlices1 = 2;
 constexpr int SplitKSlices2 = 2;
 
@@ -360,7 +359,7 @@ using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
 constexpr int NumStages1 = 4;
 constexpr int NumStages2 = 4;
-// Split K dimension into 1 partitions
+// Split K dimension into 2 partitions
 constexpr int SplitKSlices1 = 2;
 constexpr int SplitKSlices2 = 2;
 
@@ -382,7 +381,7 @@ using ShapeMMAOp2 = cutlass::gemm::GemmShape<16, 8, 16>;
 // Number of pipelines you want to use
 constexpr int NumStages1 = 4;
 constexpr int NumStages2 = 4;
-// Split K dimension into 1 partitions
+// Split K dimension into 2 partitions
 constexpr int SplitKSlices1 = 2;
 constexpr int SplitKSlices2 = 2;
 
