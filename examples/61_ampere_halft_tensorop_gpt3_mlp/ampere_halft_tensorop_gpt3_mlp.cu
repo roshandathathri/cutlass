@@ -551,10 +551,10 @@ struct Options {
   bool reference_check;
   int iterations;
 
-  int num_devices_per_node;
   int rank;
   int num_ranks;
-  std::vector<ncclComm_t> comms;
+  int num_devices_per_node;
+  ncclComm_t nccl_comm;
 
   cutlass::gemm::GemmCoord problem_size1;
   cutlass::gemm::GemmCoord problem_size2;
@@ -566,23 +566,32 @@ struct Options {
     batch_size(BATCH_SIZE),
     reference_check(true),
     iterations(20) { 
-    // Set the number of GPUs per process/node
-    cudaGetDeviceCount(&num_devices_per_node);
 
     // Initialize MPI
     MPICHECK(MPI_Init(NULL, NULL));
     MPICHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
     MPICHECK(MPI_Comm_size(MPI_COMM_WORLD, &num_ranks));
 
-    // Create NCCL communicator: one per device on this process/node 
-    comms = createComms();
+    // Set device
+    setDevice();
+
+    // Create NCCL communicator
+    createNCCLComm();
 
     // Now initialize problem sizes
     init_problem_sizes();
   }
+
+  void setDevice() {
+    // Get the number of GPUs per node
+    cudaGetDeviceCount(&num_devices_per_node);
+
+    // Prioritize locality: fill/use GPUs on the same node first
+    CUDACHECK(cudaSetDevice(rank % num_devices_per_node));
+  }
     
-  // assumes one MPI process per multi-GPU node
-  std::vector<ncclComm_t> createComms() {
+  // assumes one MPI process per GPU
+  void createNCCLComm() {
     ncclUniqueId id;
     // generating NCCL unique ID at one process and broadcasting it to all
     if (rank == 0) {
@@ -590,17 +599,7 @@ struct Options {
     }
     MPICHECK(MPI_Bcast((void *)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
 
-    std::vector<ncclComm_t> comms(num_devices_per_node);
-    // initializing NCCL, group API is required around ncclCommInitRank as it is
-    // called across multiple GPUs in each thread/process
-    NCCLCHECK(ncclGroupStart());
-    for (int i=0; i<num_devices_per_node; i++) {
-      CUDACHECK(cudaSetDevice(rank * num_devices_per_node + i));
-      NCCLCHECK(ncclCommInitRank(&comms[i], num_ranks * num_devices_per_node, id, rank * num_devices_per_node + i));
-    }
-    NCCLCHECK(ncclGroupEnd());
-
-    return comms;
+    NCCLCHECK(ncclCommInitRank(&nccl_comm, num_ranks, id, rank));
   }
 
   bool valid() {
@@ -627,13 +626,13 @@ struct Options {
   }
 
   void init_problem_sizes() {
-    problem_size1.m() = 4 * hidden_size / (num_ranks * num_devices_per_node);
+    problem_size1.m() = 4 * hidden_size / num_ranks;
     problem_size1.n() = batch_size;
     problem_size1.k() = hidden_size;
 
     problem_size2.m() = hidden_size;
     problem_size2.n() = batch_size;
-    problem_size2.k() = 4 * hidden_size / (num_ranks * num_devices_per_node);
+    problem_size2.k() = 4 * hidden_size / num_ranks;
   }
 
   void print() {
@@ -646,7 +645,7 @@ struct Options {
     }
 
     std::cout << "Number of ranks: " << num_ranks << std::endl;
-    std::cout << "Number of devices per rank: " << num_devices_per_node << std::endl;
+    std::cout << "Number of devices per node: " << num_devices_per_node << std::endl;
 
     printf("[%d,%d] x [%d,%d] HALFT tensor op Matrix Multiply\n", \
       problem_size1.m(), problem_size1.k(), 
@@ -904,167 +903,130 @@ void constructOps(cutlass::gemm::GemmCoord& problem_size1,
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 int run(Options &options) {
-  int num_devices_per_node = options.num_devices_per_node;
   int rank = options.rank;
   int num_ranks = options.num_ranks;
-  std::vector<ncclComm_t>& comms = options.comms;
+  ncclComm_t& nccl_comm = options.nccl_comm;
 
   options.print();
 
-  // Create streams: one per device on this process/node
-  std::vector<cudaStream_t> streams(num_devices_per_node);
-  for (int i=0; i<num_devices_per_node; i++) {
-    CUDACHECK(cudaSetDevice(i));
-    CUDACHECK(cudaStreamCreate(&streams[i]));
-  }
+  // Create stream on this process/GPU
+  cudaStream_t stream;
+  CUDACHECK(cudaStreamCreate(&stream));
 
   // Create a tuple of problem size for matrix multiplication
   cutlass::gemm::GemmCoord problem_size1 = options.problem_size1;
   cutlass::gemm::GemmCoord problem_size2 = options.problem_size2;
 
-  // Create matrices: one per device on this process/node
-  std::vector<cutlass::HostTensor<ElementInputA1, LayoutInputA1>> tensor_a(num_devices_per_node);
-  std::vector<cutlass::HostTensor<ElementReference, LayoutInputA1>> tensor_ref_a(num_devices_per_node);
-  std::vector<cutlass::HostTensor<ElementInputB1, LayoutInputB1>> tensor_b(num_devices_per_node);
-  std::vector<cutlass::HostTensor<ElementReference, LayoutInputB1>> tensor_ref_b(num_devices_per_node);
-  std::vector<cutlass::HostTensor<ElementInputA2, LayoutInputA2>> tensor_a2(num_devices_per_node);
-  std::vector<cutlass::HostTensor<ElementReference, LayoutInputA2>> tensor_ref_a2(num_devices_per_node);
-  std::vector<cutlass::HostTensor<ElementIntermediateB2, LayoutIntermediateB2>> tensor_b2(num_devices_per_node);
-  std::vector<cutlass::HostTensor<ElementReference, LayoutIntermediateB2>> tensor_ref_b2(num_devices_per_node);
-  std::vector<cutlass::HostTensor<ElementOutput, LayoutOutput>> tensor_o(num_devices_per_node);
-  std::vector<cutlass::HostTensor<ElementReference, LayoutOutput>> tensor_ref_o(num_devices_per_node);
+  // Create matrices on this process/GPU
+  cutlass::HostTensor<ElementInputA1, LayoutInputA1> tensor_a;
+  cutlass::HostTensor<ElementReference, LayoutInputA1> tensor_ref_a;
+  cutlass::HostTensor<ElementInputB1, LayoutInputB1> tensor_b;
+  cutlass::HostTensor<ElementReference, LayoutInputB1> tensor_ref_b;
+  cutlass::HostTensor<ElementInputA2, LayoutInputA2> tensor_a2;
+  cutlass::HostTensor<ElementReference, LayoutInputA2> tensor_ref_a2;
+  cutlass::HostTensor<ElementIntermediateB2, LayoutIntermediateB2> tensor_b2;
+  cutlass::HostTensor<ElementReference, LayoutIntermediateB2> tensor_ref_b2;
+  cutlass::HostTensor<ElementOutput, LayoutOutput> tensor_o;
+  cutlass::HostTensor<ElementReference, LayoutOutput> tensor_ref_o;
 
-  // Initialize matrices on each device on this process/node
-  for (int i=0; i<num_devices_per_node; i++) {
-    CUDACHECK(cudaSetDevice(i));
-    initializeMatrices(problem_size1, problem_size2, 
-      &tensor_a[i], &tensor_ref_a[i], 
-      &tensor_b[i], &tensor_ref_b[i], 
-      &tensor_a2[i], &tensor_ref_a2[i], 
-      &tensor_b2[i], &tensor_ref_b2[i], 
-      &tensor_o[i], &tensor_ref_o[i]);
-  }
+  // Initialize matrices on this process/GPU
+  initializeMatrices(problem_size1, problem_size2, 
+    &tensor_a, &tensor_ref_a, 
+    &tensor_b, &tensor_ref_b, 
+    &tensor_a2, &tensor_ref_a2, 
+    &tensor_b2, &tensor_ref_b2, 
+    &tensor_o, &tensor_ref_o);
 
   // Create the GEMM ops
-  std::vector<Gemm1> gemm_op1(num_devices_per_node);
-  std::vector<Gemm2> gemm_op2(num_devices_per_node);
+  Gemm1 gemm_op1;
+  Gemm2 gemm_op2;
   // Create the workspaces for the GEMM ops
-  std::vector<cutlass::device_memory::allocation<uint8_t>> workspace1(num_devices_per_node);
-  std::vector<cutlass::device_memory::allocation<uint8_t>> workspace2(num_devices_per_node);
+  cutlass::device_memory::allocation<uint8_t> workspace1;
+  cutlass::device_memory::allocation<uint8_t> workspace2;
 
-  // Construct the GEMM op on each device on this process/node
-  for (int i=0; i<num_devices_per_node; i++) {
-    CUDACHECK(cudaSetDevice(i));
-    constructOps(problem_size1, problem_size2,
-      tensor_a[i], tensor_b[i], tensor_a2[i], tensor_b2[i], tensor_o[i], 
-      &gemm_op1[i], &gemm_op2[i],
-      &workspace1[i], &workspace2[i]);
-  }
+  // Construct the GEMM op on this process/GPU
+  constructOps(problem_size1, problem_size2,
+    tensor_a, tensor_b, tensor_a2, tensor_b2, tensor_o, 
+    &gemm_op1, &gemm_op2,
+    &workspace1, &workspace2);
 
   // Result structure
   Result result;
+  // Status structure
+  cutlass::Status status;
 
-  constexpr size_t kNumEventsPerIterationPerDevice = 5;
+  constexpr size_t kNumEventsPerIteration = 5;
 
   //
   // Construct events
   //
-  std::vector<std::vector<cudaEvent_t>> events(num_devices_per_node);
-  for (int i=0; i<num_devices_per_node; i++) {
-    CUDACHECK(cudaSetDevice(i));
-    events[i].resize(kNumEventsPerIterationPerDevice * options.iterations);
-    for (auto & event : events[i]) {
-      result.error = cudaEventCreate(&event);
-      if (result.error != cudaSuccess) {
-        std::cerr << "cudaEventCreate() failed: " << cudaGetErrorString(result.error) << std::endl;
-        return -1;
-      }
+  std::vector<cudaEvent_t> events;
+  events.resize(kNumEventsPerIteration * options.iterations);
+  for (auto & event : events) {
+    result.error = cudaEventCreate(&event);
+    if (result.error != cudaSuccess) {
+      std::cerr << "cudaEventCreate() failed: " << cudaGetErrorString(result.error) << std::endl;
+      return -1;
     }
   }
+
+  // synchronize all devices before beginning profiling
+  MPI_Barrier(MPI_COMM_WORLD);
 
   //
   // Run profiling loop
   //
   for (int iter = 0; iter < options.iterations; ++iter) {
     // Record an event at the start of the GEMM
-    for (int i=0; i<num_devices_per_node; i++) {
-      CUDACHECK(cudaSetDevice(i));
-      result.error = cudaEventRecord(events[i][iter * kNumEventsPerIterationPerDevice + 0], streams[i]);
-      if (result.error != cudaSuccess) {
-        std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
-        return -1;
-      }
+    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 0], stream);
+    if (result.error != cudaSuccess) {
+      std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
+      return -1;
     }
 
-    // Launch the first GEMM kernel on each device on this process/node
-    for (int i=0; i<num_devices_per_node; i++) {
-      CUDACHECK(cudaSetDevice(i));
-      cutlass::Status status = gemm_op1[i](streams[i]);
-      CUTLASS_CHECK(status);
-    }
+    // Launch the first GEMM kernel on this process/GPU
+    status = gemm_op1(stream);
+    CUTLASS_CHECK(status);
 
     // Record an event when the first GEMM is complete
-    for (int i=0; i<num_devices_per_node; i++) {
-      CUDACHECK(cudaSetDevice(i));
-      result.error = cudaEventRecord(events[i][iter * kNumEventsPerIterationPerDevice + 1], streams[i]);
-      if (result.error != cudaSuccess) {
-        std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
-        return -1;
-      }
+    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 1], stream);
+    if (result.error != cudaSuccess) {
+      std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
+      return -1;
     }
 
-    // Launch the ReLu kernel on each device on this process/node
-    for (int i=0; i<num_devices_per_node; i++) {
-      CUDACHECK(cudaSetDevice(i));
-      cutlass::reference::device::TensorReLu(tensor_b2[i].device_view());
-    }
+    // Launch the ReLu kernel on each device on this process/GPU
+    cutlass::reference::device::TensorReLu(tensor_b2.device_view());
 
     // Record an event when the ReLU is complete
-    for (int i=0; i<num_devices_per_node; i++) {
-      CUDACHECK(cudaSetDevice(i));
-      result.error = cudaEventRecord(events[i][iter * kNumEventsPerIterationPerDevice + 2], streams[i]);
-      if (result.error != cudaSuccess) {
-        std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
-        return -1;
-      }
+    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 2], stream);
+    if (result.error != cudaSuccess) {
+      std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
+      return -1;
     }
 
-    // Launch the second GEMM kernel on each device on this process/node
-    for (int i=0; i<num_devices_per_node; i++) {
-      CUDACHECK(cudaSetDevice(i));
-      cutlass::Status status = gemm_op2[i](streams[i]);
-      CUTLASS_CHECK(status);
-    }
+    // Launch the second GEMM kernel on each device on this process/GPU
+    status = gemm_op2(stream);
+    CUTLASS_CHECK(status);
 
     // Record an event when the second GEMM is complete
-    for (int i=0; i<num_devices_per_node; i++) {
-      CUDACHECK(cudaSetDevice(i));
-      result.error = cudaEventRecord(events[i][iter * kNumEventsPerIterationPerDevice + 3], streams[i]);
-      if (result.error != cudaSuccess) {
-        std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
-        return -1;
-      }
+    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 3], stream);
+    if (result.error != cudaSuccess) {
+      std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
+      return -1;
     }
     
     // TODO(roshan): Replace with MSCCLPP AllReduce
-    // Launch all-reduce on each device on this process/node
-    NCCLCHECK(ncclGroupStart());
-    for (int i=0; i<num_devices_per_node; i++) {
-      NCCLCHECK(ncclAllReduce((const void*)tensor_o[i].device_data(), (void*)tensor_o[i].device_data(), 
-            tensor_o[i].size(), ElementNcclAllreduce, ncclSum,
-            comms[i], streams[i]));
-    }
-
-    NCCLCHECK(ncclGroupEnd());
+    // Launch all-reduce on each device on this process/GPU
+    NCCLCHECK(ncclAllReduce((const void*)tensor_o.device_data(), (void*)tensor_o.device_data(), 
+          tensor_o.size(), ElementNcclAllreduce, ncclSum,
+          nccl_comm, stream));
 
     // Record an event when the AllReduce is complete
-    for (int i=0; i<num_devices_per_node; i++) {
-      CUDACHECK(cudaSetDevice(i));
-      result.error = cudaEventRecord(events[i][iter * kNumEventsPerIterationPerDevice + 4], streams[i]);
-      if (result.error != cudaSuccess) {
-        std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
-        return -1;
-      }
+    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 4], stream);
+    if (result.error != cudaSuccess) {
+      std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
+      return -1;
     }
   }
   //
@@ -1072,209 +1034,178 @@ int run(Options &options) {
   //
 
   // Wait for work on the device to complete.
-  for (int i=0; i<num_devices_per_node; i++) {
-    CUDACHECK(cudaSetDevice(i));
-    result.error = cudaEventSynchronize(events[i][options.iterations * kNumEventsPerIterationPerDevice - 1]);
-    if (result.error != cudaSuccess) {
-      std::cerr << "cudaEventSynchronize() failed: " << cudaGetErrorString(result.error) << std::endl;
-      return -1;
-    }
+  result.error = cudaEventSynchronize(events[options.iterations * kNumEventsPerIteration - 1]);
+  if (result.error != cudaSuccess) {
+    std::cerr << "cudaEventSynchronize() failed: " << cudaGetErrorString(result.error) << std::endl;
+    return -1;
   }
 
   // Measure elapsed computation and communication time
-  std::vector<float> gemm1_time_ms(num_devices_per_node, 0);
-  std::vector<float> relu_time_ms(num_devices_per_node, 0);
-  std::vector<float> gemm2_time_ms(num_devices_per_node, 0);
-  std::vector<float> comm_time_ms(num_devices_per_node, 0);
-  std::vector<float> runtime_ms(num_devices_per_node, 0);
-  for (int i=0; i<num_devices_per_node; i++) {
-    CUDACHECK(cudaSetDevice(i));
-    float time_ms;
-    for (int iter = 0; iter < options.iterations; ++iter) {
-      result.error = cudaEventElapsedTime(&time_ms, 
-        events[i][iter * kNumEventsPerIterationPerDevice + 0], 
-        events[i][iter * kNumEventsPerIterationPerDevice + 1]);
-      if (result.error != cudaSuccess) {
-        std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
-        return -1;
-      }
-      gemm1_time_ms[i] += time_ms;
-      result.error = cudaEventElapsedTime(&time_ms, 
-        events[i][iter * kNumEventsPerIterationPerDevice + 1], 
-        events[i][iter * kNumEventsPerIterationPerDevice + 2]);
-      if (result.error != cudaSuccess) {
-        std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
-        return -1;
-      }
-      relu_time_ms[i] += time_ms;
-      result.error = cudaEventElapsedTime(&time_ms, 
-        events[i][iter * kNumEventsPerIterationPerDevice + 2], 
-        events[i][iter * kNumEventsPerIterationPerDevice + 3]);
-      if (result.error != cudaSuccess) {
-        std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
-        return -1;
-      }
-      gemm2_time_ms[i] += time_ms;
-      result.error = cudaEventElapsedTime(&time_ms, 
-        events[i][iter * kNumEventsPerIterationPerDevice + 3], 
-        events[i][iter * kNumEventsPerIterationPerDevice + 4]);
-      if (result.error != cudaSuccess) {
-        std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
-        return -1;
-      }
-      comm_time_ms[i] += time_ms;
-    }
-    gemm1_time_ms[i] /= static_cast<float>(options.iterations);
-    relu_time_ms[i] /= static_cast<float>(options.iterations);
-    gemm2_time_ms[i] /= static_cast<float>(options.iterations);
-    comm_time_ms[i] /= static_cast<float>(options.iterations);
+  float gemm1_time_ms{0.0f};
+  float relu_time_ms{0.0f};
+  float gemm2_time_ms{0.0f};
+  float comm_time_ms{0.0f};
+  float runtime_ms{0.0f};
+  float time_ms;
+  for (int iter = 0; iter < options.iterations; ++iter) {
     result.error = cudaEventElapsedTime(&time_ms, 
-      events[i][0], 
-      events[i][options.iterations * kNumEventsPerIterationPerDevice - 1]);
+      events[iter * kNumEventsPerIteration + 0], 
+      events[iter * kNumEventsPerIteration + 1]);
     if (result.error != cudaSuccess) {
       std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
       return -1;
     }
-    runtime_ms[i] = time_ms / static_cast<float>(options.iterations);
+    gemm1_time_ms += time_ms;
+    result.error = cudaEventElapsedTime(&time_ms, 
+      events[iter * kNumEventsPerIteration + 1], 
+      events[iter * kNumEventsPerIteration + 2]);
+    if (result.error != cudaSuccess) {
+      std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
+      return -1;
+    }
+    relu_time_ms += time_ms;
+    result.error = cudaEventElapsedTime(&time_ms, 
+      events[iter * kNumEventsPerIteration + 2], 
+      events[iter * kNumEventsPerIteration + 3]);
+    if (result.error != cudaSuccess) {
+      std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
+      return -1;
+    }
+    gemm2_time_ms += time_ms;
+    result.error = cudaEventElapsedTime(&time_ms, 
+      events[iter * kNumEventsPerIteration + 3], 
+      events[iter * kNumEventsPerIteration + 4]);
+    if (result.error != cudaSuccess) {
+      std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
+      return -1;
+    }
+    comm_time_ms += time_ms;
   }
+  gemm1_time_ms /= static_cast<float>(options.iterations);
+  relu_time_ms /= static_cast<float>(options.iterations);
+  gemm2_time_ms /= static_cast<float>(options.iterations);
+  comm_time_ms /= static_cast<float>(options.iterations);
+  result.error = cudaEventElapsedTime(&time_ms, 
+    events[0], 
+    events[options.iterations * kNumEventsPerIteration - 1]);
+  if (result.error != cudaSuccess) {
+    std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
+    return -1;
+  }
+  runtime_ms = time_ms / static_cast<float>(options.iterations);
 
   // Cleanup
-  for (int i=0; i<num_devices_per_node; i++) {
-    CUDACHECK(cudaSetDevice(i));
-    for (auto event : events[i]) {
-      (void)cudaEventDestroy(event);
-    }
+  for (auto event : events) {
+    (void)cudaEventDestroy(event);
   }
 
   // TODO(roshan) skip reference check if reference_check = false
+  ElementReference alpha = ElementReference(1);
+  ElementReference beta = ElementReference(0);
+
   // Create instantiation for device reference gemm kernel
+  cutlass::reference::device::Gemm<ElementReference,
+                                  LayoutInputA1,
+                                  ElementReference,
+                                  LayoutInputB1,
+                                  ElementReference,
+                                  LayoutIntermediateB2,
+                                  ElementReference,
+                                  ElementReference>
+      gemm_device1;        
+  cutlass::reference::device::Gemm<ElementReference,
+                                  LayoutInputA2,
+                                  ElementReference,
+                                  LayoutIntermediateB2,
+                                  ElementReference,
+                                  LayoutOutput,
+                                  ElementReference,
+                                  ElementReference>
+      gemm_device2;
+
   // Then launch device reference gemm kernel
-  for (int i=0; i<num_devices_per_node; i++) {
-    CUDACHECK(cudaSetDevice(i));
-    ElementReference alpha = ElementReference(1);
-    ElementReference beta = ElementReference(0);
-  
-    cutlass::reference::device::Gemm<ElementReference,
-                                    LayoutInputA1,
-                                    ElementReference,
-                                    LayoutInputB1,
-                                    ElementReference,
-                                    LayoutIntermediateB2,
-                                    ElementReference,
-                                    ElementReference>
-        gemm_device1;        
-    cutlass::reference::device::Gemm<ElementReference,
-                                    LayoutInputA2,
-                                    ElementReference,
-                                    LayoutIntermediateB2,
-                                    ElementReference,
-                                    LayoutOutput,
-                                    ElementReference,
-                                    ElementReference>
-        gemm_device2;
+  gemm_device1(problem_size1,
+              alpha,
+              tensor_ref_a.device_ref(),
+              tensor_ref_b.device_ref(),
+              beta,
+              tensor_ref_b2.device_ref(), // does NOT matter because beta = 0
+              tensor_ref_b2.device_ref());
+  cutlass::reference::device::TensorReLu(tensor_ref_b2.device_view());
+  gemm_device2(problem_size2,
+              alpha,
+              tensor_ref_a2.device_ref(),
+              tensor_ref_b2.device_ref(),
+              beta,
+              tensor_ref_o.device_ref(), // does NOT matter because beta = 0
+              tensor_ref_o.device_ref());
 
-    gemm_device1(problem_size1,
-                alpha,
-                tensor_ref_a[i].device_ref(),
-                tensor_ref_b[i].device_ref(),
-                beta,
-                tensor_ref_b2[i].device_ref(), // does NOT matter because beta = 0
-                tensor_ref_b2[i].device_ref());
-
-    cutlass::reference::device::TensorReLu(tensor_ref_b2[i].device_view());
-
-    gemm_device2(problem_size2,
-                alpha,
-                tensor_ref_a2[i].device_ref(),
-                tensor_ref_b2[i].device_ref(),
-                beta,
-                tensor_ref_o[i].device_ref(), // does NOT matter because beta = 0
-                tensor_ref_o[i].device_ref());
-  }
-
-  // Launch all-reduce on each device on this process/node
-  NCCLCHECK(ncclGroupStart());
-  for (int i=0; i<num_devices_per_node; i++) {
-    NCCLCHECK(ncclAllReduce((const void*)tensor_ref_o[i].device_data(), (void*)tensor_ref_o[i].device_data(), 
-          tensor_ref_o[i].size(), ElementNcclAllreduceReference, ncclSum, comms[i], 
-          0)); // use the default stream
-  }
-  NCCLCHECK(ncclGroupEnd());
+  // Launch all-reduce on this process/GPU
+  NCCLCHECK(ncclAllReduce((const void*)tensor_ref_o.device_data(), (void*)tensor_ref_o.device_data(), 
+        tensor_ref_o.size(), ElementNcclAllreduceReference, ncclSum, nccl_comm, 
+        0)); // use the default stream
 
   // Wait for kernels to finish
-  for (int i=0; i<num_devices_per_node; i++) {
-    CUDACHECK(cudaSetDevice(i));
-    cudaDeviceSynchronize();
-  }
-
-  bool passed = false;
+  cudaDeviceSynchronize();
 
   // Copy output data from CUTLASS and reference kernel to host for comparison
+  tensor_o.sync_host();
+  tensor_ref_o.sync_host();
+
   // Then check if output from CUTLASS kernel and reference kernel are equal or not
-  for (int i=0; i<num_devices_per_node; i++) {
-    CUDACHECK(cudaSetDevice(i));
-    tensor_o[i].sync_host();
-    tensor_ref_o[i].sync_host();
-
-    passed = relatively_equal_array(
-      tensor_o[i].host_data(), tensor_ref_o[i].host_data(), tensor_o[i].size(), !options.csv);
-    
-    if (!passed) {
-      break;
-    }
-  }
-
-  if (passed && (rank == 0)) {
-    if (options.csv) {
-      std::cout << "Hidden size,Batch size,#Ranks,#Devices,GEMM1 Time (ms),ReLU Time (ms),GEMM2 Time (ms),Comm. Time (ms),Total Time (ms),GFLOPS" << std::endl;
-    } else {
-      std::cout << "Hidden size\t| Batch size\t| Rank:Device\t| GEMM1 Time (ms)\t| ReLU Time (ms)\t| GEMM2 Time (ms)\t| Comm. Time (ms)\t| Total Time (ms)\t| GFLOPS" << std::endl;
-    }
-  }
+  bool passed = relatively_equal_array(
+    tensor_o.host_data(), tensor_ref_o.host_data(), tensor_o.size(), !options.csv);
 
   MPI_Allreduce(MPI_IN_PLACE, &passed, 1, MPI_C_BOOL, MPI_LAND, MPI_COMM_WORLD);
 
   if (passed) {
     if (options.csv) {
       if (rank == 0) {
-        std::ostringstream os;
-          os << std::fixed << std::setprecision(3);
-          os << options.hidden_size << ",";
-          os << options.batch_size << ",";
-          os << num_ranks << ",";
-          os << num_devices_per_node << ",";
-          os << gemm1_time_ms[0] << ",";
-          os << relu_time_ms[0] << ",";
-          os << gemm2_time_ms[0] << ",";
-          os << comm_time_ms[0] << ",";
-          os << runtime_ms[0] << ",";
-          os << options.gflops(runtime_ms[0] + comm_time_ms[0] / 1000.0) << std::endl;
-          std::cout << os.str();
-      }
-    } else {
-      for (int i=0; i<num_devices_per_node; i++) {
+        std::cout << "Hidden size,Batch size,#Ranks,#DevicesPerNode,GEMM1 Time (ms),ReLU Time (ms),GEMM2 Time (ms),Comm. Time (ms),Total Time (ms),GFLOPS" << std::endl;
         std::ostringstream os;
         os << std::fixed << std::setprecision(3);
-        os << options.hidden_size << "\t\t| ";
-        os << options.batch_size << "\t\t| ";
-        os << rank << ":" << i << "\t\t| ";
-        os << gemm1_time_ms[i] << "\t\t\t| ";
-        os << relu_time_ms[i] << "\t\t\t| ";
-        os << gemm2_time_ms[i] << "\t\t\t| ";
-        os << comm_time_ms[i] << "\t\t\t| ";
-        os << runtime_ms[i] << "\t\t\t| ";
-        os << options.gflops(runtime_ms[i] + comm_time_ms[i] / 1000.0) << std::endl;
+        os << options.hidden_size << ",";
+        os << options.batch_size << ",";
+        os << num_ranks << ",";
+        os << options.num_devices_per_node << ",";
+        os << gemm1_time_ms << ",";
+        os << relu_time_ms << ",";
+        os << gemm2_time_ms << ",";
+        os << comm_time_ms << ",";
+        os << runtime_ms << ",";
+        os << options.gflops(runtime_ms + comm_time_ms / 1000.0) << std::endl;
         std::cout << os.str();
       }
+    } else {
+      if (rank == 0) {
+        std::cout << "Hidden size\t| Batch size\t| Rank\t| GEMM1 Time (ms)\t| ReLU Time (ms)\t| GEMM2 Time (ms)\t| Comm. Time (ms)\t| Total Time (ms)\t| GFLOPS" << std::endl;
+      }
+    
+      MPI_Barrier(MPI_COMM_WORLD);
+    
+      std::ostringstream os;
+      os << std::fixed << std::setprecision(3);
+      os << options.hidden_size << "\t\t| ";
+      os << options.batch_size << "\t\t| ";
+      os << rank << "\t| ";
+      os << gemm1_time_ms << "\t\t\t| ";
+      os << relu_time_ms << "\t\t\t| ";
+      os << gemm2_time_ms << "\t\t\t| ";
+      os << comm_time_ms << "\t\t\t| ";
+      os << runtime_ms << "\t\t\t| ";
+      os << options.gflops(runtime_ms + comm_time_ms / 1000.0) << std::endl;
+      std::cout << os.str();
+
+      MPI_Barrier(MPI_COMM_WORLD);
     }
   }
-
-  MPI_Barrier(MPI_COMM_WORLD);
 
   if (!options.csv && rank == 0) {
     std::cout << (passed ? "Passed" : "Failed") << std::endl;
   }
 
+  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Finalize();
   return (passed ? 0  : -1);
 }
 
