@@ -68,7 +68,7 @@ fp32 data by using NVIDIA Ampere architecture.
 
 #include "helper.h"
 
-#ifndef BATCH_SIZE
+#ifndef HIDDEN_SIZE
 #define HIDDEN_SIZE 12288
 #endif
 
@@ -392,15 +392,15 @@ constexpr int SplitKSlices2 = 2;
 
 // The code section below describes datatype for input, output matrices and computation between
 // elements in input matrices.
-using ElementAccumulator = float;               // <- data type of accumulator
-using ElementComputeEpilogue = cutlass::half_t; // <- data type of epilogue operations
-using ElementInputA1 = cutlass::half_t;          // <- data type of elements in input matrix A
-using ElementInputB1 = cutlass::half_t;          // <- data type of elements in input matrix B
-using ElementInputA2 = cutlass::half_t;         // <- data type of elements in input matrix A2
-using ElementIntermediateB2 = cutlass::half_t;  // <- data type of elements in intermediate matrix B2
-using ElementOutput = cutlass::half_t;          // <- data type of elements in output matrix D
+using ElementAccumulator      = float;            // <- data type of accumulator
+using ElementComputeEpilogue  = cutlass::half_t;  // <- data type of epilogue operations
+using ElementInputA1          = cutlass::half_t;  // <- data type of elements in input matrix A
+using ElementInputB1          = cutlass::half_t;  // <- data type of elements in input matrix B
+using ElementInputA2          = cutlass::half_t;  // <- data type of elements in input matrix A2
+using ElementIntermediateB2   = cutlass::half_t;  // <- data type of elements in intermediate matrix B2
+using ElementOutput           = cutlass::half_t;  // <- data type of elements in output matrix D
 constexpr ncclDataType_t ElementNcclAllreduce 
-                              = ncclHalf;    // <- data type for reducing elements in output matrix D
+                              = ncclHalf;         // <- data type for reducing elements in output matrix D
 
 // Use wider type for reference kernel
 using ElementReference = float;
@@ -410,19 +410,19 @@ constexpr ncclDataType_t ElementNcclAllreduceReference
 // The code section below describes matrix layout of input and output matrices. 
 #if BATCH_SIZE >= 8
 // All matrices are in RowMajor
-using LayoutInputA1 = cutlass::layout::RowMajor;
-using LayoutInputB1 = cutlass::layout::RowMajor;
-using LayoutInputA2 = cutlass::layout::RowMajor;
-using LayoutIntermediateB2 = cutlass::layout::RowMajor;
-using LayoutOutput = cutlass::layout::RowMajor;
+using LayoutInputA1         = cutlass::layout::RowMajor;
+using LayoutInputB1         = cutlass::layout::RowMajor;
+using LayoutInputA2         = cutlass::layout::RowMajor;
+using LayoutIntermediateB2  = cutlass::layout::RowMajor;
+using LayoutOutput          = cutlass::layout::RowMajor;
 #else
 // Only A matrices are in RowMajor; the other matrices are in ColumnMajor
 // (this is to avoid cutlass error: Error Misaligned Operand at: 876)
-using LayoutInputA1 = cutlass::layout::RowMajor;
-using LayoutInputB1 = cutlass::layout::ColumnMajor;
-using LayoutInputA2 = cutlass::layout::RowMajor;
-using LayoutIntermediateB2 = cutlass::layout::ColumnMajor;
-using LayoutOutput = cutlass::layout::ColumnMajor;
+using LayoutInputA1         = cutlass::layout::RowMajor;
+using LayoutInputB1         = cutlass::layout::ColumnMajor;
+using LayoutInputA2         = cutlass::layout::RowMajor;
+using LayoutIntermediateB2  = cutlass::layout::ColumnMajor;
+using LayoutOutput          = cutlass::layout::ColumnMajor;
 #endif
 
 // This code section describes whether you want to use tensor cores or regular SIMT cores on GPU SM
@@ -444,7 +444,7 @@ using EpilogueOp = cutlass::epilogue::thread::LinearCombination<
     ElementAccumulator,                                // <- data type of accumulator
     ElementComputeEpilogue>;  // <- data type for alpha/beta in linear combination function
 
-  using Gemm1 = cutlass::gemm::device::Gemm<ElementInputA1,
+using Gemm1 = cutlass::gemm::device::Gemm<ElementInputA1,
                                           LayoutInputA1,
                                           ElementInputB1,
                                           LayoutInputB1,
@@ -464,23 +464,23 @@ using EpilogueOp = cutlass::epilogue::thread::LinearCombination<
                                           true>;
 
 using Gemm2 = cutlass::gemm::device::Gemm<ElementInputA2,
-                                         LayoutInputA2,
-                                         ElementIntermediateB2,
-                                         LayoutIntermediateB2,
-                                         ElementOutput,
-                                         LayoutOutput,
-                                         ElementAccumulator,
-                                         MMAOp,
-                                         SmArch,
-                                         ShapeMMAThreadBlock2,
-                                         ShapeMMAWarp2,
-                                         ShapeMMAOp2,
-                                         EpilogueOp,
-                                         SwizzleThreadBlock,
-                                         NumStages2,
-                                         8,
-                                         8,
-                                         true>;
+                                          LayoutInputA2,
+                                          ElementIntermediateB2,
+                                          LayoutIntermediateB2,
+                                          ElementOutput,
+                                          LayoutOutput,
+                                          ElementAccumulator,
+                                          MMAOp,
+                                          SmArch,
+                                          ShapeMMAThreadBlock2,
+                                          ShapeMMAWarp2,
+                                          ShapeMMAOp2,
+                                          EpilogueOp,
+                                          SwizzleThreadBlock,
+                                          NumStages2,
+                                          8,
+                                          8,
+                                          true>;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
