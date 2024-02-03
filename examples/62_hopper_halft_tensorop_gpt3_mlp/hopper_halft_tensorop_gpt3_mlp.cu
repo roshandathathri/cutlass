@@ -106,50 +106,140 @@ using namespace cute;
 
 #if BATCH_SIZE == 2048
 
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler1  = cutlass::gemm::PersistentScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
 
 #elif BATCH_SIZE == 1792
 
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler2  = cutlass::gemm::StreamKScheduler;
 
 #elif BATCH_SIZE == 1536
 
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
 
 #elif BATCH_SIZE == 1280
 
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler1  = cutlass::gemm::PersistentScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler2  = cutlass::gemm::StreamKScheduler;
 
 #elif BATCH_SIZE == 1024
 
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler1  = cutlass::gemm::PersistentScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
 
 #elif BATCH_SIZE == 512
 
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler1  = cutlass::gemm::PersistentScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
 
 #elif BATCH_SIZE == 256
 
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler1  = cutlass::gemm::PersistentScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
 
 #elif BATCH_SIZE == 128
 
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
 
 #elif BATCH_SIZE == 64
 
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
 
 #elif BATCH_SIZE == 32
 
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
 
 #elif BATCH_SIZE == 16
 
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
 
 #elif BATCH_SIZE == 8
 
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
 
 #elif BATCH_SIZE == 4
 
+using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
+using KernelSchedule1   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::NoSmemWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
+using KernelScheduler2  = cutlass::gemm::StreamKScheduler;
 
 #elif BATCH_SIZE == 2
 
+using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
+using KernelSchedule1   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::NoSmemWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
+using KernelScheduler2  = cutlass::gemm::StreamKScheduler;
 
 #else 
 
 #define BATCH_SIZE 1
 
+using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
+using KernelSchedule1   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using EpilogueSchedule2 = cutlass::epilogue::NoSmemWarpSpecialized;     
+using KernelSchedule2   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
+using KernelScheduler2  = cutlass::gemm::StreamKScheduler;
 
 #endif
 
@@ -222,23 +312,9 @@ using OperatorClass     = cutlass::arch::OpClassTensorOp; // Operator class tag
 
 using TileShape1        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
 using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
-using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
-using KernelScheduler1  = cutlass::gemm::PersistentScheduler;
 
 using TileShape2        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
 using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
-using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
-using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
-
-// using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
-// using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
-// using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
-
-// using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
-// using KernelSchedule1   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
-// using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
 
 // Core kernel configurations for GEMM1
 using CollectiveEpilogue1 = typename cutlass::epilogue::collective::CollectiveBuilder<
