@@ -106,140 +106,215 @@ using namespace cute;
 
 #if BATCH_SIZE == 2048
 
-using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::PersistentScheduler;
-using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using TileShape1        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
+
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape2        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 #elif BATCH_SIZE == 1792
 
 using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
 using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using TileShape1        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
+
 using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
 using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler2  = cutlass::gemm::StreamKScheduler;
+using TileShape2        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 #elif BATCH_SIZE == 1536
 
-using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
 using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
-using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
-using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape1        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
-#elif BATCH_SIZE == 1280
-
-using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
-using KernelScheduler1  = cutlass::gemm::PersistentScheduler;
 using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
 using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler2  = cutlass::gemm::StreamKScheduler;
+using TileShape2        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
+
+#elif BATCH_SIZE == 1280
+
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::PersistentScheduler;
+using TileShape1        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
+
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape2        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 #elif BATCH_SIZE == 1024
 
-using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
-using KernelScheduler1  = cutlass::gemm::PersistentScheduler;
-using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using TileShape1        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_1,_2,_1>;                                // Shape of the threadblocks in a cluster
+
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape2        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 #elif BATCH_SIZE == 512
 
-using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
-using KernelScheduler1  = cutlass::gemm::PersistentScheduler;
+using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
+using TileShape1        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_1,_2,_1>;                                // Shape of the threadblocks in a cluster
+
 using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
 using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
 using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape2        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_1,_2,_1>;                                // Shape of the threadblocks in a cluster
 
 #elif BATCH_SIZE == 256
 
 using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecialized;     
 using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
 using KernelScheduler1  = cutlass::gemm::PersistentScheduler;
-using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
-using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape1        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_1,_2,_1>;                                // Shape of the threadblocks in a cluster
+
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler2  = cutlass::gemm::StreamKScheduler;
+using TileShape2        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_1,_2,_1>;                                // Shape of the threadblocks in a cluster
 
 #elif BATCH_SIZE == 128
 
 using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
 using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
-using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using TileShape1        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
+
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape2        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 #elif BATCH_SIZE == 64
 
 using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
 using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
-using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using TileShape1        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
+
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape2        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 #elif BATCH_SIZE == 32
 
 using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
 using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
-using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using TileShape1        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
+
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape2        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 #elif BATCH_SIZE == 16
 
 using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
 using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
-using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using TileShape1        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
+
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape2        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 #elif BATCH_SIZE == 8
 
 using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
 using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
-using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedPingpong;  
+using TileShape1        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
+
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape2        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 #elif BATCH_SIZE == 4
 
-using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
-using KernelSchedule1   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
-using EpilogueSchedule2 = cutlass::epilogue::NoSmemWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
-using KernelScheduler2  = cutlass::gemm::StreamKScheduler;
+using TileShape1        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
+
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape2        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 #elif BATCH_SIZE == 2
 
-using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
-using KernelSchedule1   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
-using EpilogueSchedule2 = cutlass::epilogue::NoSmemWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
-using KernelScheduler2  = cutlass::gemm::StreamKScheduler;
+using TileShape1        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
+
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape2        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 #else 
 
 #define BATCH_SIZE 1
 
-using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
-using KernelSchedule1   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
-using EpilogueSchedule2 = cutlass::epilogue::NoSmemWarpSpecialized;     
-using KernelSchedule2   = cutlass::gemm::KernelCpAsyncWarpSpecializedCooperative;  
-using KernelScheduler2  = cutlass::gemm::StreamKScheduler;
+using TileShape1        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
+
+using EpilogueSchedule2 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
+using KernelSchedule2   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
+using KernelScheduler2  = cutlass::gemm::PersistentScheduler;
+using TileShape2        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
+using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 #endif
 
@@ -262,59 +337,23 @@ constexpr ncclDataType_t ElementNcclAllreduceReference
                               = ncclFloat;
 
 // The code section below describes matrix layout of input and output matrices. 
-#if BATCH_SIZE >= 8
-// All matrices are in RowMajor
-using LayoutInputA1         = cutlass::layout::RowMajor;
-using LayoutInputB1         = cutlass::layout::RowMajor;
-using LayoutInputA2         = cutlass::layout::RowMajor;
-using LayoutIntermediateB2  = cutlass::layout::RowMajor;
-using LayoutOutput          = cutlass::layout::RowMajor;
-#else
-// Only A matrices are in RowMajor; the other matrices are in ColumnMajor
-// (this is to avoid cutlass error: Error Misaligned Operand at: 876)
-using LayoutInputA1         = cutlass::layout::RowMajor;
+// All matrices are in ColumnMajor
+using LayoutInputA1         = cutlass::layout::ColumnMajor;
 using LayoutInputB1         = cutlass::layout::ColumnMajor;
-using LayoutInputA2         = cutlass::layout::RowMajor;
+using LayoutInputA2         = cutlass::layout::ColumnMajor;
 using LayoutIntermediateB2  = cutlass::layout::ColumnMajor;
 using LayoutOutput          = cutlass::layout::ColumnMajor;
-#endif
 
-// Memory access granularity/alignment of A matrix in units of elements (up to 16 bytes)
-#if BATCH_SIZE >= 8
+// Memory access granularity/alignment of matrices in units of elements (up to 16 bytes)
 constexpr int AlignmentInputA1        = 128 / cutlass::sizeof_bits<ElementInputA1>::value;
 constexpr int AlignmentInputB1        = 128 / cutlass::sizeof_bits<ElementInputB1>::value;
 constexpr int AlignmentInputA2        = 128 / cutlass::sizeof_bits<ElementInputA2>::value;
 constexpr int AlignmentIntermediateB2 = 128 / cutlass::sizeof_bits<ElementIntermediateB2>::value;
 constexpr int AlignmentOutput         = 128 / cutlass::sizeof_bits<ElementOutput>::value;
-#elif BATCH_SIZE == 4
-constexpr int AlignmentInputA1        = 4;
-constexpr int AlignmentInputB1        = 4;
-constexpr int AlignmentInputA2        = 4;
-constexpr int AlignmentIntermediateB2 = 4;
-constexpr int AlignmentOutput         = 4;
-#elif BATCH_SIZE == 2
-constexpr int AlignmentInputA1        = 2;
-constexpr int AlignmentInputB1        = 2;
-constexpr int AlignmentInputA2        = 2;
-constexpr int AlignmentIntermediateB2 = 2;
-constexpr int AlignmentOutput         = 2;
-#else // BATCH_SIZE == 1
-constexpr int AlignmentInputA1        = 1;
-constexpr int AlignmentInputB1        = 1;
-constexpr int AlignmentInputA2        = 1;
-constexpr int AlignmentIntermediateB2 = 1;
-constexpr int AlignmentOutput         = 1;
-#endif
 
 // Core kernel configurations for both GEMMs
 using ArchTag           = cutlass::arch::Sm90;            // Tag indicating the minimum SM that supports the intended feature
 using OperatorClass     = cutlass::arch::OpClassTensorOp; // Operator class tag
-
-using TileShape1        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
-using ClusterShape1     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
-
-using TileShape2        = Shape<_128,_128,_64>;                           // Threadblock-level tile size
-using ClusterShape2     = Shape<_2,_1,_1>;                                // Shape of the threadblocks in a cluster
 
 // Core kernel configurations for GEMM1
 using CollectiveEpilogue1 = typename cutlass::epilogue::collective::CollectiveBuilder<
