@@ -942,23 +942,15 @@ void InitializeMatrices(cutlass::gemm::GemmCoord& problem_size1,
     params_ref);
 }
 
-void ConstructOps(cutlass::gemm::GemmCoord& problem_size1, 
-  cutlass::gemm::GemmCoord& problem_size2, 
+Arguments1 ConstructGemm1(cutlass::gemm::GemmCoord& problem_size1, 
   cutlass::DeviceAllocation<ElementInputA1>& block_a1,
   cutlass::DeviceAllocation<ElementInputB1>& block_b1,
-  cutlass::DeviceAllocation<ElementInputA2>& block_a2,
   cutlass::DeviceAllocation<ElementIntermediateB2>& block_b2,
-  cutlass::DeviceAllocation<ElementOutput>& block_o,
   StrideInputA1& stride_a1,
   StrideInputB1& stride_b1,
   StrideIntermediateD1& stride_d1,
-  StrideInputA2& stride_a2,
-  StrideIntermediateB2& stride_b2,
-  StrideOutput& stride_o,
   Gemm1* gemm_op1,
-  Gemm2* gemm_op2, 
-  cutlass::device_memory::allocation<uint8_t>* workspace1, 
-  cutlass::device_memory::allocation<uint8_t>* workspace2) {
+  cutlass::device_memory::allocation<uint8_t>* workspace1) {
 
   ElementAccumulator alpha = ElementAccumulator{kAlpha};
   ElementAccumulator beta = ElementAccumulator{kBeta};
@@ -972,6 +964,37 @@ void ConstructOps(cutlass::gemm::GemmCoord& problem_size1,
                           {{alpha, beta},                 // <- tuple of alpha and beta
                             block_b2.get(), stride_d1,    // <- matric C: does NOT matter because beta = 0
                             block_b2.get(), stride_d1}};  // <- reference to matrix D on device
+
+  cutlass::Status status;
+
+  // Check the problem size is supported or not 
+  status = gemm_op1->can_implement(arguments1);
+  CUTLASS_CHECK(status);
+
+  // Using the arguments, query for extra workspace required for matrix multiplication computation
+  size_t workspace_size1 = Gemm1::get_workspace_size(arguments1);
+
+  // Allocate workspace memory
+  workspace1->reset(workspace_size1);
+
+  return arguments1;
+}
+
+Arguments2 ConstructGemm2(cutlass::gemm::GemmCoord& problem_size2, 
+  cutlass::DeviceAllocation<ElementInputA2>& block_a2,
+  cutlass::DeviceAllocation<ElementIntermediateB2>& block_b2,
+  cutlass::DeviceAllocation<ElementOutput>& block_o,
+  StrideInputA2& stride_a2,
+  StrideIntermediateB2& stride_b2,
+  StrideOutput& stride_o,
+  Gemm2* gemm_op2, 
+  cutlass::device_memory::allocation<uint8_t>* workspace2) {
+
+  ElementAccumulator alpha = ElementAccumulator{kAlpha};
+  ElementAccumulator beta = ElementAccumulator{kBeta};
+        
+  // Create a tuple of gemm kernel arguments. This is later passed as arguments to launch
+  // instantiated CUTLASS kernel
   Arguments2 arguments2{cutlass::gemm::GemmUniversalMode::kGemm,
                           {problem_size2.m(), problem_size2.n(), problem_size2.k()},
                           {block_a2.get(), stride_a2,     // <- reference to matrix A on device 
@@ -983,24 +1006,16 @@ void ConstructOps(cutlass::gemm::GemmCoord& problem_size1,
   cutlass::Status status;
 
   // Check the problem size is supported or not 
-  status = gemm_op1->can_implement(arguments1);
-  CUTLASS_CHECK(status);
   status = gemm_op2->can_implement(arguments2);
   CUTLASS_CHECK(status);
 
   // Using the arguments, query for extra workspace required for matrix multiplication computation
-  size_t workspace_size1 = Gemm1::get_workspace_size(arguments1);
   size_t workspace_size2 = Gemm2::get_workspace_size(arguments2);
 
   // Allocate workspace memory
-  workspace1->reset(workspace_size1);
   workspace2->reset(workspace_size2);
 
-  // Initialize CUTLASS kernel with arguments and workspace pointer
-  status = gemm_op1->initialize(arguments1, workspace1->get());
-  CUTLASS_CHECK(status);
-  status = gemm_op2->initialize(arguments2, workspace2->get());
-  CUTLASS_CHECK(status);
+  return arguments2;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1050,6 +1065,10 @@ int run(Options &options) {
   InitializeMatrices(problem_size1, problem_size2,
     &block_a1, &block_b1, &block_a2, &block_b2, &block_o,
     &block_ref_a1, &block_ref_b1, &block_ref_a2, &block_ref_b2, &block_ref_o);
+  // Create tensor view for ReLU
+  cutlass::TensorView tensor_b2(block_b2.get(),
+                                Gemm1::LayoutD::packed({problem_size1.m(), problem_size1.n()}),
+                                  {problem_size1.m(), problem_size1.n()});
 
   // Create the GEMM ops
   Gemm1 gemm_op1;
@@ -1059,12 +1078,15 @@ int run(Options &options) {
   cutlass::device_memory::allocation<uint8_t> workspace2;
 
   // Construct the GEMM ops on this process/GPU
-  ConstructOps(problem_size1, problem_size2,
-    block_a1, block_b1, block_a2, block_b2, block_o,
-    stride_a1, stride_b1, stride_d1, stride_a2, stride_b2, stride_o,
-    &gemm_op1, &gemm_op2,
-    &workspace1, &workspace2);
-
+  Arguments1 arguments1 = ConstructGemm1(problem_size1, 
+    block_a1, block_b1, block_b2, 
+    stride_a1, stride_b1, stride_d1, 
+    &gemm_op1, &workspace1);
+  Arguments2 arguments2 = ConstructGemm2(problem_size2,
+    block_a2, block_b2, block_o,
+    stride_a2, stride_b2, stride_o,
+    &gemm_op2, &workspace2);
+    
   // Result structure
   Result result;
   // Status structure
@@ -1092,6 +1114,12 @@ int run(Options &options) {
   // Run profiling loop
   //
   for (int iter = 0; iter < options.iterations; ++iter) {
+    // Initialize CUTLASS kernels with arguments and workspace pointer
+    status = gemm_op1.initialize(arguments1, workspace1.get());
+    CUTLASS_CHECK(status);
+    status = gemm_op2.initialize(arguments2, workspace2.get());
+    CUTLASS_CHECK(status);
+
     // Record an event at the start of the GEMM
     result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 0], stream);
     if (result.error != cudaSuccess) {
@@ -1111,9 +1139,6 @@ int run(Options &options) {
     }
 
     // Launch the ReLu kernel on each device on this process/GPU
-    cutlass::TensorView tensor_b2(block_b2.get(),
-                                  Gemm1::LayoutD::packed({problem_size1.m(), problem_size1.n()}),
-                                  {problem_size1.m(), problem_size1.n()});
     cutlass::reference::device::TensorReLu(tensor_b2);
 
     // Record an event when the ReLU is complete
