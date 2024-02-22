@@ -1176,7 +1176,7 @@ int run(Options &options) {
       os << gemm2_time_ms << "\t\t\t| ";
       os << comm_time_ms << "\t\t\t| ";
       os << runtime_ms << "\t\t\t| ";
-      os << options.gflops(runtime_ms + comm_time_ms / 1000.0) << std::endl;
+      os << options.gflops(runtime_ms / 1000.0) << std::endl;
       std::cout << os.str();
 
       MPI_Barrier(MPI_COMM_WORLD);

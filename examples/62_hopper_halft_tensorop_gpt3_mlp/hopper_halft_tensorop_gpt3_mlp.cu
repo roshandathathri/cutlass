@@ -1295,7 +1295,7 @@ int run(Options &options) {
         os << gemm2_time_ms << ",";
         os << comm_time_ms << ",";
         os << runtime_ms << ",";
-        os << options.gflops(runtime_ms + comm_time_ms / 1000.0) << std::endl;
+        os << options.gflops(runtime_ms / 1000.0) << std::endl;
         std::cout << os.str();
       }
     } else {
