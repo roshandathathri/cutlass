@@ -434,16 +434,25 @@ using SmArch = cutlass::arch::Sm80;
 // This code section describes how threadblocks are scheduled on GPU
 using SwizzleThreadBlock = cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>;  // <- ??
 
-// This code section describes the epilogue part of the kernel
-using EpilogueOp = cutlass::epilogue::thread::LinearCombination<
-    ElementOutput,                                     // <- data type of output matrix
-    128 / cutlass::sizeof_bits<ElementOutput>::value,  // <- the number of elements per vectorized
-                                                       // memory access. For a byte, it's 16
-                                                       // elements. This becomes the vector width of
-                                                       // math instructions in the epilogue too
-    ElementAccumulator,                                // <- data type of accumulator
-    ElementComputeEpilogue>;  // <- data type for alpha/beta in linear combination function
+// This code section describes the epilogue part of the kernels
+using EpilogueOp1 = cutlass::epilogue::thread::LinearCombinationRelu<
+  ElementOutput,                                    // <- data type of output matrix
+  128 / cutlass::sizeof_bits<ElementOutput>::value, // <- the number of elements per vectorized
+                                                    // memory access. For a byte, it's 16
+                                                    // elements. This becomes the vector width of
+                                                    // math instructions in the epilogue too
+  ElementAccumulator,                               // <- data type of accumulator
+  ElementComputeEpilogue>;                          // <- data type for alpha/beta in linear combination function
+using EpilogueOp2 = cutlass::epilogue::thread::LinearCombination<
+  ElementOutput,                                    // <- data type of output matrix
+  128 / cutlass::sizeof_bits<ElementOutput>::value, // <- the number of elements per vectorized
+                                                    // memory access. For a byte, it's 16
+                                                    // elements. This becomes the vector width of
+                                                    // math instructions in the epilogue too
+  ElementAccumulator,                               // <- data type of accumulator
+  ElementComputeEpilogue>;                          // <- data type for alpha/beta in linear combination function
 
+// This section describes the core kernel configurations
 using Gemm1 = cutlass::gemm::device::Gemm<ElementInputA1,
                                           LayoutInputA1,
                                           ElementInputB1,
@@ -456,13 +465,12 @@ using Gemm1 = cutlass::gemm::device::Gemm<ElementInputA1,
                                           ShapeMMAThreadBlock1,
                                           ShapeMMAWarp1,
                                           ShapeMMAOp1,
-                                          EpilogueOp,
+                                          EpilogueOp1,
                                           SwizzleThreadBlock,
                                           NumStages1, 
                                           8,
                                           8,
                                           true>;
-
 using Gemm2 = cutlass::gemm::device::Gemm<ElementInputA2,
                                           LayoutInputA2,
                                           ElementIntermediateB2,
@@ -475,7 +483,7 @@ using Gemm2 = cutlass::gemm::device::Gemm<ElementInputA2,
                                           ShapeMMAThreadBlock2,
                                           ShapeMMAWarp2,
                                           ShapeMMAOp2,
-                                          EpilogueOp,
+                                          EpilogueOp2,
                                           SwizzleThreadBlock,
                                           NumStages2,
                                           8,
@@ -647,12 +655,9 @@ struct Options {
     std::cout << "Number of ranks: " << num_ranks << std::endl;
     std::cout << "Number of devices per node: " << num_devices_per_node << std::endl;
 
-    printf("[%d,%d] x [%d,%d] HALFT tensor op Matrix Multiply\n", \
+    printf("[%d,%d] x [%d,%d] HALFT tensor op Matrix Multiply fused with ReLU\n", \
       problem_size1.m(), problem_size1.k(), 
       problem_size1.k(), problem_size1.n());
-
-    printf("[%d,%d] HALFT tensor op ReLU\n", \
-      problem_size1.m(),  problem_size1.n());
 
     printf("[%d,%d] x [%d,%d] HALFT tensor op Matrix Multiply\n", \
       problem_size2.m(), problem_size2.k(), 
@@ -955,7 +960,7 @@ int run(Options &options) {
   // Status structure
   cutlass::Status status;
 
-  constexpr size_t kNumEventsPerIteration = 5;
+  constexpr size_t kNumEventsPerIteration = 4;
 
   //
   // Construct events
@@ -995,22 +1000,12 @@ int run(Options &options) {
       return -1;
     }
 
-    // Launch the ReLu kernel on each device on this process/GPU
-    cutlass::reference::device::TensorReLu(tensor_b2.device_view());
-
-    // Record an event when the ReLU is complete
-    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 2], stream);
-    if (result.error != cudaSuccess) {
-      std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
-      return -1;
-    }
-
     // Launch the second GEMM kernel on each device on this process/GPU
     status = gemm_op2(stream);
     CUTLASS_CHECK(status);
 
     // Record an event when the second GEMM is complete
-    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 3], stream);
+    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 2], stream);
     if (result.error != cudaSuccess) {
       std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
       return -1;
@@ -1023,7 +1018,7 @@ int run(Options &options) {
           nccl_comm, stream));
 
     // Record an event when the AllReduce is complete
-    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 4], stream);
+    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 3], stream);
     if (result.error != cudaSuccess) {
       std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
       return -1;
@@ -1042,7 +1037,6 @@ int run(Options &options) {
 
   // Measure elapsed computation and communication time
   float gemm1_time_ms{0.0f};
-  float relu_time_ms{0.0f};
   float gemm2_time_ms{0.0f};
   float comm_time_ms{0.0f};
   float runtime_ms{0.0f};
@@ -1063,7 +1057,7 @@ int run(Options &options) {
       std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
       return -1;
     }
-    relu_time_ms += time_ms;
+    gemm2_time_ms += time_ms;
     result.error = cudaEventElapsedTime(&time_ms, 
       events[iter * kNumEventsPerIteration + 2], 
       events[iter * kNumEventsPerIteration + 3]);
@@ -1071,18 +1065,9 @@ int run(Options &options) {
       std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
       return -1;
     }
-    gemm2_time_ms += time_ms;
-    result.error = cudaEventElapsedTime(&time_ms, 
-      events[iter * kNumEventsPerIteration + 3], 
-      events[iter * kNumEventsPerIteration + 4]);
-    if (result.error != cudaSuccess) {
-      std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
-      return -1;
-    }
     comm_time_ms += time_ms;
   }
   gemm1_time_ms /= static_cast<float>(options.iterations);
-  relu_time_ms /= static_cast<float>(options.iterations);
   gemm2_time_ms /= static_cast<float>(options.iterations);
   comm_time_ms /= static_cast<float>(options.iterations);
   result.error = cudaEventElapsedTime(&time_ms, 
@@ -1161,7 +1146,7 @@ int run(Options &options) {
   if (passed) {
     if (options.csv) {
       if (rank == 0) {
-        std::cout << "Hidden size,Batch size,#Ranks,#DevicesPerNode,GEMM1 Time (ms),ReLU Time (ms),GEMM2 Time (ms),Comm. Time (ms),Total Time (ms),GFLOPS" << std::endl;
+        std::cout << "Hidden size,Batch size,#Ranks,#DevicesPerNode,GEMM1 Time (ms),GEMM2 Time (ms),Comm. Time (ms),Total Time (ms),GFLOPS" << std::endl;
         std::ostringstream os;
         os << std::fixed << std::setprecision(3);
         os << options.hidden_size << ",";
@@ -1169,7 +1154,6 @@ int run(Options &options) {
         os << num_ranks << ",";
         os << options.num_devices_per_node << ",";
         os << gemm1_time_ms << ",";
-        os << relu_time_ms << ",";
         os << gemm2_time_ms << ",";
         os << comm_time_ms << ",";
         os << runtime_ms << ",";
@@ -1178,7 +1162,7 @@ int run(Options &options) {
       }
     } else {
       if (rank == 0) {
-        std::cout << "Hidden size\t| Batch size\t| Rank\t| GEMM1 Time (ms)\t| ReLU Time (ms)\t| GEMM2 Time (ms)\t| Comm. Time (ms)\t| Total Time (ms)\t| GFLOPS" << std::endl;
+        std::cout << "Hidden size\t| Batch size\t| Rank\t| GEMM1 Time (ms)\t| GEMM2 Time (ms)\t| Comm. Time (ms)\t| Total Time (ms)\t| GFLOPS" << std::endl;
       }
     
       MPI_Barrier(MPI_COMM_WORLD);
@@ -1189,7 +1173,6 @@ int run(Options &options) {
       os << options.batch_size << "\t\t| ";
       os << rank << "\t| ";
       os << gemm1_time_ms << "\t\t\t| ";
-      os << relu_time_ms << "\t\t\t| ";
       os << gemm2_time_ms << "\t\t\t| ";
       os << comm_time_ms << "\t\t\t| ";
       os << runtime_ms << "\t\t\t| ";

@@ -134,7 +134,9 @@ using ClusterShape2     = Shape<_2,_1,_1>;                                // Sha
 
 #elif BATCH_SIZE == 1536
 
-using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
+// Profiler recommeneded NoSmemWarpSpecialized 
+// but that leads to compilation errors due to fusion with ReLU
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
 using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
 using TileShape1        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
@@ -162,7 +164,9 @@ using ClusterShape2     = Shape<_2,_1,_1>;                                // Sha
 
 #elif BATCH_SIZE == 1024
 
-using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
+// Profiler recommeneded NoSmemWarpSpecialized 
+// but that leads to compilation errors due to fusion with ReLU
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
 using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
 using TileShape1        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
@@ -176,7 +180,9 @@ using ClusterShape2     = Shape<_2,_1,_1>;                                // Sha
 
 #elif BATCH_SIZE == 512
 
-using EpilogueSchedule1 = cutlass::epilogue::NoSmemWarpSpecialized;     
+// Profiler recommeneded NoSmemWarpSpecialized 
+// but that leads to compilation errors due to fusion with ReLU
+using EpilogueSchedule1 = cutlass::epilogue::TmaWarpSpecializedCooperative;     
 using KernelSchedule1   = cutlass::gemm::KernelTmaWarpSpecializedCooperative;  
 using KernelScheduler1  = cutlass::gemm::StreamKScheduler;
 using TileShape1        = Shape<_128,_256,_64>;                           // Threadblock-level tile size
@@ -356,6 +362,7 @@ using ArchTag           = cutlass::arch::Sm90;            // Tag indicating the 
 using OperatorClass     = cutlass::arch::OpClassTensorOp; // Operator class tag
 
 // Core kernel configurations for GEMM1
+// Fuse ReLU with the epilogue
 using CollectiveEpilogue1 = typename cutlass::epilogue::collective::CollectiveBuilder<
                               ArchTag, OperatorClass,
                               TileShape1, ClusterShape1,
@@ -363,7 +370,8 @@ using CollectiveEpilogue1 = typename cutlass::epilogue::collective::CollectiveBu
                               ElementAccumulator, ElementAccumulator,
                               ElementIntermediateB2, LayoutIntermediateB2, AlignmentIntermediateB2,
                               ElementIntermediateB2, LayoutIntermediateB2, AlignmentIntermediateB2,
-                              EpilogueSchedule1
+                              EpilogueSchedule1,
+                              cutlass::epilogue::fusion::LinCombEltAct<cutlass::epilogue::thread::ReLu, ElementIntermediateB2, ElementAccumulator>
                             >::CollectiveOp;
 using StageCountType1     = cutlass::gemm::collective::StageCountAutoCarveout<
                               static_cast<int>(sizeof(typename CollectiveEpilogue1::SharedStorage))>;
@@ -619,12 +627,9 @@ struct Options {
     std::cout << "Number of ranks: " << num_ranks << std::endl;
     std::cout << "Number of devices per node: " << num_devices_per_node << std::endl;
 
-    printf("[%d,%d] x [%d,%d] HALFT tensor op Matrix Multiply\n", \
+    printf("[%d,%d] x [%d,%d] HALFT tensor op Matrix Multiply fused with ReLU\n", \
       problem_size1.m(), problem_size1.k(), 
       problem_size1.k(), problem_size1.n());
-
-    printf("[%d,%d] HALFT tensor op ReLU\n", \
-      problem_size1.m(),  problem_size1.n());
 
     printf("[%d,%d] x [%d,%d] HALFT tensor op Matrix Multiply\n", \
       problem_size2.m(), problem_size2.k(), 
@@ -1065,10 +1070,6 @@ int run(Options &options) {
   InitializeMatrices(problem_size1, problem_size2,
     &block_a1, &block_b1, &block_a2, &block_b2, &block_o,
     &block_ref_a1, &block_ref_b1, &block_ref_a2, &block_ref_b2, &block_ref_o);
-  // Create tensor view for ReLU
-  cutlass::TensorView tensor_b2(block_b2.get(),
-                                Gemm1::LayoutD::packed({problem_size1.m(), problem_size1.n()}),
-                                  {problem_size1.m(), problem_size1.n()});
 
   // Create the GEMM ops
   Gemm1 gemm_op1;
@@ -1092,7 +1093,7 @@ int run(Options &options) {
   // Status structure
   cutlass::Status status;
 
-  constexpr size_t kNumEventsPerIteration = 5;
+  constexpr size_t kNumEventsPerIteration = 4;
 
   //
   // Construct events
@@ -1138,22 +1139,12 @@ int run(Options &options) {
       return -1;
     }
 
-    // Launch the ReLu kernel on each device on this process/GPU
-    cutlass::reference::device::TensorReLu(tensor_b2);
-
-    // Record an event when the ReLU is complete
-    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 2], stream);
-    if (result.error != cudaSuccess) {
-      std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
-      return -1;
-    }
-
     // Launch the second GEMM kernel on each device on this process/GPU
     status = gemm_op2.run(stream);
     CUTLASS_CHECK(status);
 
     // Record an event when the second GEMM is complete
-    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 3], stream);
+    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 2], stream);
     if (result.error != cudaSuccess) {
       std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
       return -1;
@@ -1166,7 +1157,7 @@ int run(Options &options) {
           nccl_comm, stream));
 
     // Record an event when the AllReduce is complete
-    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 4], stream);
+    result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 3], stream);
     if (result.error != cudaSuccess) {
       std::cerr << "cudaEventRecord() failed: " << cudaGetErrorString(result.error) << std::endl;
       return -1;
@@ -1185,7 +1176,6 @@ int run(Options &options) {
 
   // Measure elapsed computation and communication time
   float gemm1_time_ms{0.0f};
-  float relu_time_ms{0.0f};
   float gemm2_time_ms{0.0f};
   float comm_time_ms{0.0f};
   float runtime_ms{0.0f};
@@ -1206,7 +1196,7 @@ int run(Options &options) {
       std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
       return -1;
     }
-    relu_time_ms += time_ms;
+    gemm2_time_ms += time_ms;
     result.error = cudaEventElapsedTime(&time_ms, 
       events[iter * kNumEventsPerIteration + 2], 
       events[iter * kNumEventsPerIteration + 3]);
@@ -1214,18 +1204,9 @@ int run(Options &options) {
       std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
       return -1;
     }
-    gemm2_time_ms += time_ms;
-    result.error = cudaEventElapsedTime(&time_ms, 
-      events[iter * kNumEventsPerIteration + 3], 
-      events[iter * kNumEventsPerIteration + 4]);
-    if (result.error != cudaSuccess) {
-      std::cerr << "cudaEventElapsed() failed: " << cudaGetErrorString(result.error) << std::endl;
-      return -1;
-    }
     comm_time_ms += time_ms;
   }
   gemm1_time_ms /= static_cast<float>(options.iterations);
-  relu_time_ms /= static_cast<float>(options.iterations);
   gemm2_time_ms /= static_cast<float>(options.iterations);
   comm_time_ms /= static_cast<float>(options.iterations);
   result.error = cudaEventElapsedTime(&time_ms, 
@@ -1303,7 +1284,7 @@ int run(Options &options) {
   if (passed) {
     if (options.csv) {
       if (rank == 0) {
-        std::cout << "Hidden size,Batch size,#Ranks,#DevicesPerNode,GEMM1 Time (ms),ReLU Time (ms),GEMM2 Time (ms),Comm. Time (ms),Total Time (ms),GFLOPS" << std::endl;
+        std::cout << "Hidden size,Batch size,#Ranks,#DevicesPerNode,GEMM1 Time (ms),GEMM2 Time (ms),Comm. Time (ms),Total Time (ms),GFLOPS" << std::endl;
         std::ostringstream os;
         os << std::fixed << std::setprecision(3);
         os << options.hidden_size << ",";
@@ -1311,7 +1292,6 @@ int run(Options &options) {
         os << num_ranks << ",";
         os << options.num_devices_per_node << ",";
         os << gemm1_time_ms << ",";
-        os << relu_time_ms << ",";
         os << gemm2_time_ms << ",";
         os << comm_time_ms << ",";
         os << runtime_ms << ",";
@@ -1320,7 +1300,7 @@ int run(Options &options) {
       }
     } else {
       if (rank == 0) {
-        std::cout << "Hidden size\t| Batch size\t| Rank\t| GEMM1 Time (ms)\t| ReLU Time (ms)\t| GEMM2 Time (ms)\t| Comm. Time (ms)\t| Total Time (ms)\t| GFLOPS" << std::endl;
+        std::cout << "Hidden size\t| Batch size\t| Rank\t| GEMM1 Time (ms)\t| GEMM2 Time (ms)\t| Comm. Time (ms)\t| Total Time (ms)\t| GFLOPS" << std::endl;
       }
     
       MPI_Barrier(MPI_COMM_WORLD);
@@ -1331,7 +1311,6 @@ int run(Options &options) {
       os << options.batch_size << "\t\t| ";
       os << rank << "\t| ";
       os << gemm1_time_ms << "\t\t\t| ";
-      os << relu_time_ms << "\t\t\t| ";
       os << gemm2_time_ms << "\t\t\t| ";
       os << comm_time_ms << "\t\t\t| ";
       os << runtime_ms << "\t\t\t| ";
