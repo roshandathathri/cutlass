@@ -170,12 +170,10 @@ public:
 
     host_.resize(count * 2);
 
-    // Allocate memory
-    Element* device_memory = nullptr;
     if (device_backed_) {
-      device_memory = device_memory::allocate<Element>(count * 2);
+      // Allocate memory
+      device_.reset(count * 2);
     }
-    device_.reset(device_memory, device_backed_ ? count * 2 : 0);
   }
 
   /// Updates the extent and layout of the HostTensor. Allocates memory according to the new

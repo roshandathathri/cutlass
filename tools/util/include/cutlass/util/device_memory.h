@@ -38,6 +38,8 @@
 
 #include <memory>
 
+#include <cuda.h>
+
 #include "cutlass/platform/platform.h"
 #include "cutlass/numeric_types.h"
 #include "exceptions.h"
@@ -48,35 +50,109 @@ namespace device_memory {
 /******************************************************************************
  * Allocation lifetime
  ******************************************************************************/
+struct Memory {
+  /// Number of bytes on the current CUDA device
+  size_t bytes;
 
-/// Allocate a buffer of \p count elements of type \p T on the current CUDA device
-template <typename T>
-T* allocate(size_t count = 1) {
+  /// Pointer to the memory on the current CUDA device
+  CUdeviceptr ptr;
 
-  T* ptr = 0;
-  size_t bytes = 0;
+  /// Handle to the memory on the current CUDA device
+  CUmemGenericAllocationHandle handle;
 
-  bytes = count * sizeof(T);
+  Memory() : bytes(0), ptr(0), handle(0) {}
 
-  cudaError_t cuda_error = cudaMalloc((void**)&ptr, bytes);
+  Memory(size_t _bytes) : bytes(_bytes), ptr(0), handle(0) {
+    if (bytes == 0) {
+      return;
+    }
 
-  if (cuda_error != cudaSuccess) {
-    throw cuda_exception("Failed to allocate memory", cuda_error);
+    int deviceId = -1;
+    cudaError_t cuda_error = cudaGetDevice(&deviceId);
+    if (cuda_error != cudaSuccess) {
+      std::cout << "Failed to get device" << std::endl;
+      throw cuda_exception("Failed to get device", cuda_error);
+    }
+
+    CUmemAllocationProp prop = {};
+    prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+    prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+    prop.location.id = deviceId;
+    prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+
+    size_t granularity = 0;
+    CUresult cu_result = cuMemGetAllocationGranularity(&granularity, &prop, CU_MEM_ALLOC_GRANULARITY_MINIMUM);
+    if (cu_result != CUDA_SUCCESS) {
+      std::cout << "Failed to get the minimum mem allocation granularity" << std::endl;
+      throw cuda_exception("Failed to get the minimum mem allocation granularity", cuda_error);
+    }
+
+    // Pad the allocation size to a multiple of the granularity
+    bytes = ((bytes + granularity - 1) / granularity) * granularity;
+
+    // create a memory handle
+    cu_result = cuMemCreate(&handle, bytes, &prop, 0);
+    if (cu_result != CUDA_SUCCESS) {
+      std::cout << "Failed to create a memory handle for " << bytes << " bytes : " << cu_result << std::endl;
+      throw cuda_exception("Failed to create a memory handle", cuda_error);
+    }
+
+    CUmemAccessDesc accessDesc = {};
+    accessDesc.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+    accessDesc.location.id = deviceId;
+    accessDesc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+
+    // Reserve virtual address space
+    cu_result = cuMemAddressReserve(&ptr, bytes, granularity, 0U, 0);
+    if (cu_result != CUDA_SUCCESS) {
+      std::cout << "Failed to reserve virtual address space" << std::endl;
+      throw cuda_exception("Failed to reserve virtual address space", cuda_error);
+    }
+
+    // Map the memory handle to the reserved virtual address space
+    cu_result = cuMemMap(ptr, bytes, 0, handle, 0);
+    if (cu_result != CUDA_SUCCESS) {
+      std::cout << "Failed to map the handle to the virtual address space" << std::endl;
+      throw cuda_exception("Failed to map the handle to the virtual address space", cuda_error);
+    }
+
+    // Set the access flags for the virtual address space
+    cu_result = cuMemSetAccess(ptr, bytes, &accessDesc, 1);
+    if (cu_result != CUDA_SUCCESS) {
+      std::cout << "Failed to set access for the allocated memory" << std::endl;
+      throw cuda_exception("Failed to set access for the allocated memory", cuda_error);
+    }
+
+    // Initialize the memory to zero
+    // cuda_error = cudaMemset(ptr, 0, bytes);
   }
 
-  return ptr;
-}
-
-/// Free the buffer pointed to by \p ptr
-template <typename T>
-void free(T* ptr) {
-  if (ptr) {
-    cudaError_t cuda_error = (cudaFree(ptr));
-    if (cuda_error != cudaSuccess) {
-      throw cuda_exception("Failed to free device memory", cuda_error);
+  ~Memory() {
+    if (ptr) {
+      CUresult cu_result = cuMemUnmap(ptr, bytes);
+      if (cu_result != CUDA_SUCCESS) {
+        std::cout << "Failed to unmap device memory" << std::endl;
+        // noexcept
+        //                throw cuda_exception("cuMemUnmap() failed", cuda_error);
+        return;
+      }
+      cu_result = cuMemAddressFree(ptr, bytes);
+      if (cu_result != CUDA_SUCCESS) {
+        std::cout << "Failed to free device virtual memory" << std::endl;
+        // noexcept
+        //                throw cuda_exception("cuMemAddressFree() failed", cuda_error);
+        return;
+      }
+      cu_result = cuMemRelease(handle);
+      if (cu_result != CUDA_SUCCESS) {
+        std::cout << "Failed to release memory handle" << std::endl;
+        // noexcept
+        //            throw cuda_exception("Failed to release memory handle", cuda_error);
+        return;
+      }
     }
   }
-}
+};
 
 /******************************************************************************
  * Data movement
@@ -84,6 +160,7 @@ void free(T* ptr) {
 
 template <typename T>
 void copy(T* dst, T const* src, size_t count, cudaMemcpyKind kind) {
+  // TODO: should use bytes() in DeviceAllocation
   size_t bytes = count * sizeof_bits<T>::value / 8;
   if (bytes == 0 && count > 0)
     bytes = 1;
@@ -136,20 +213,6 @@ void insert_to_device(T* device_begin, InputIterator begin, InputIterator end) {
 template <typename T>
 class DeviceAllocation {
 public:
-
-  /// Delete functor for CUDA device memory
-  struct deleter {
-    void operator()(T* ptr) {
-      cudaError_t cuda_error = (cudaFree(ptr));
-      if (cuda_error != cudaSuccess) {
-        // noexcept
-        //                throw cuda_exception("cudaFree() failed", cuda_error);
-        return;
-      }
-    }
-  };
-
-public:
   //
   // Data members
   //
@@ -157,8 +220,8 @@ public:
   /// Number of elements of T allocated on the current CUDA device
   size_t capacity;
 
-  /// Smart pointer
-  platform::unique_ptr<T, deleter> smart_ptr;
+  /// Smart pointer managing the allocation
+  platform::unique_ptr<device_memory::Memory> smart_ptr;
 
 public:
 
@@ -168,12 +231,12 @@ public:
 
   /// Static member to compute the number of bytes needed for a given number of elements
   static size_t bytes(size_t elements) {
-    if (sizeof_bits<T>::value < 8) {
-      size_t const kElementsPerByte = 8 / sizeof_bits<T>::value;
+    if constexpr (sizeof_bits<T>::value < 8) {
+      size_t constexpr kElementsPerByte = 8 / sizeof_bits<T>::value;
       return elements / kElementsPerByte;
     }
     else {
-      size_t const kBytesPerElement = sizeof_bits<T>::value / 8;
+      size_t constexpr kBytesPerElement = sizeof_bits<T>::value / 8;
       return elements * kBytesPerElement;
     }
   }
@@ -189,35 +252,29 @@ public:
 
   /// Constructor: allocates \p capacity elements on the current CUDA device
   DeviceAllocation(size_t _capacity) : 
-    smart_ptr(device_memory::allocate<T>(_capacity)), capacity(_capacity) {}
-
-  /// Constructor: allocates \p capacity elements on the current CUDA device taking ownership of the allocation
-  DeviceAllocation(T *ptr, size_t _capacity) : smart_ptr(ptr), capacity(_capacity) {}
+    capacity(_capacity), smart_ptr(new device_memory::Memory(bytes(_capacity))) {}
 
   /// Copy constructor
   DeviceAllocation(DeviceAllocation const &p): 
-    smart_ptr(device_memory::allocate<T>(p.capacity)), capacity(p.capacity) {
+    capacity(p.capacity), smart_ptr(new device_memory::Memory(bytes(p.capacity))) {
 
-    device_memory::copy_device_to_device(smart_ptr.get(), p.get(), capacity);
+    device_memory::copy_device_to_device(get(), p.get(), capacity);
   }
 
   /// Move constructor
-  DeviceAllocation(DeviceAllocation &&p): capacity(0) {
-    std::swap(smart_ptr, p.smart_ptr);
+  DeviceAllocation(DeviceAllocation &&p) {
     std::swap(capacity, p.capacity);
+    std::swap(smart_ptr, p.smart_ptr);
   }
 
   /// Destructor
   ~DeviceAllocation() { reset(); }
 
-  /// Returns a pointer to the managed object
-  T* get() const { return smart_ptr.get(); }
+  /// Returns a pointer to the managed allocation
+  T* get() const { return (T*)smart_ptr.get()->ptr; }
 
-  /// Releases the ownership of the managed object (without deleting) and resets capacity to zero
-  T* release() {
-    capacity = 0;
-    return smart_ptr.release();
-  }
+  /// Returns a handle to the managed allocation
+  CUmemGenericAllocationHandle getHandle() const { return smart_ptr.get()->handle; }
 
   /// Deletes the managed object and resets capacity to zero
   void reset() {
@@ -227,27 +284,21 @@ public:
 
   /// Deletes managed object, if owned, and allocates a new object
   void reset(size_t _capacity) {
-    reset(device_memory::allocate<T>(_capacity), _capacity);
-  }
-
-  /// Deletes managed object, if owned, and replaces its reference with a given pointer and capacity
-  void reset(T* _ptr, size_t _capacity) {
-    smart_ptr.reset(_ptr);
     capacity = _capacity;
+    smart_ptr.reset(new device_memory::Memory(bytes(_capacity)));
   }
 
   /// Allocates a new buffer and copies the old buffer into it. The old buffer is then released.
   void reallocate(size_t new_capacity) {
-    
-    platform::unique_ptr<T, deleter> new_allocation(device_memory::allocate<T>(new_capacity));
+    platform::unique_ptr<device_memory::Memory> new_smart_ptr(new device_memory::Memory(bytes(new_capacity)));
 
     device_memory::copy_device_to_device(
-      new_allocation.get(), 
-      smart_ptr.get(), 
+      new_smart_ptr.get(), 
+      get(), 
       std::min(new_capacity, capacity));
 
-    std::swap(smart_ptr, new_allocation);
-    std::swap(new_capacity, capacity);
+    std::swap(capacity, new_capacity);
+    std::swap(smart_ptr, new_smart_ptr);
   }
 
   /// Returns the number of elements
@@ -260,29 +311,22 @@ public:
     return bytes(capacity);
   }
 
-  /// Returns a pointer to the object owned by *this
-  T* operator->() const { return smart_ptr.get(); }
-
-  /// Returns the deleter object which would be used for destruction of the managed object.
-  deleter& get_deleter() { return smart_ptr.get_deleter(); }
-
-  /// Returns the deleter object which would be used for destruction of the managed object (const)
-  const deleter& get_deleter() const { return smart_ptr.get_deleter(); }
+  /// Returns a pointer to the managed allocation
+  T* operator->() const { return smart_ptr.get()->ptr; }
 
   /// Copies a device-side memory allocation
   DeviceAllocation & operator=(DeviceAllocation const &p) {
     if (capacity != p.capacity) {
-      smart_ptr.reset(device_memory::allocate<T>(p.capacity));
-      capacity = p.capacity;
+      reset(p.capacity);
     }
-    device_memory::copy_device_to_device(smart_ptr.get(), p.get(), capacity);
+    device_memory::copy_device_to_device(get(), p.get(), capacity);
     return *this;
   }
 
   /// Move assignment
   DeviceAllocation & operator=(DeviceAllocation && p) {
-    std::swap(smart_ptr, p.smart_ptr);
     std::swap(capacity, p.capacity);
+    std::swap(smart_ptr, p.smart_ptr);
     return *this;
   }
 

@@ -184,12 +184,10 @@ public:
     count = count / kElementsPerStoredVec * kNumStoragePerStoredVec;
     host_.resize(count);
 
-    // Allocate memory
-    Element* device_memory = nullptr;
     if (device_backed_) {
-      device_memory = device_memory::allocate<Element>(count);
+      // Allocate memory
+      device_.reset(count);
     }
-    device_.reset(device_memory, device_backed_ ? count : 0);
   }
 
   /// Updates the extent and layout of the HostTensor. Allocates memory according to the new
