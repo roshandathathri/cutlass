@@ -55,6 +55,7 @@
 #include <vector>
 #include <iomanip>
 
+#include <mscclpp/core.hpp>
 #include <mpi.h>
 #include <nccl.h>
 
@@ -79,6 +80,8 @@
 #include "cutlass/util/reference/device/tensor_compare.h"
 #include "cutlass/util/reference/device/tensor_fill.h"
 #include "cutlass/util/reference/device/tensor_relu.h"
+
+#include "mscclpp_allreduce.h"
 
 #include "helper.h"
 
@@ -529,12 +532,22 @@ struct Options {
   int batch_size;
 
   bool reference_check;
+  bool use_nccl; // use NCCL instead of MSCCLPP
   int iterations;
+  int mscclpp_block_size;
+  int mscclpp_grid_size;
 
   int rank;
   int num_ranks;
   int num_devices_per_node;
   ncclComm_t nccl_comm;
+
+  // MSCCLPP data structures
+  std::shared_ptr<mscclpp::TcpBootstrap> bootstrap;
+  std::shared_ptr<mscclpp::Communicator> communicator;
+  std::vector<std::shared_ptr<mscclpp::Connection>> p2p_connections;
+  std::vector<mscclpp::SmDevice2DeviceSemaphore> p2p_semaphores;
+  std::shared_ptr<mscclpp::NvlsConnection> nvls_connection;
 
   cutlass::gemm::GemmCoord problem_size1;
   cutlass::gemm::GemmCoord problem_size2;
@@ -545,7 +558,10 @@ struct Options {
     hidden_size(HIDDEN_SIZE),
     batch_size(BATCH_SIZE),
     reference_check(true),
-    iterations(20) { 
+    use_nccl(false),
+    iterations(20),
+    mscclpp_block_size(1024), 
+    mscclpp_grid_size(8) { 
 
     // Initialize MPI
     MPICHECK(MPI_Init(NULL, NULL));
@@ -555,11 +571,17 @@ struct Options {
     // Set device
     setDevice();
 
+    // Create MSCCL peer to peer connections
+    createP2PConnections();
+
     // Create NCCL communicator
     createNCCLComm();
 
     // Now initialize problem sizes
     init_problem_sizes();
+
+    // Now create NVLS Connection: requires output buffer size, which depends on problem sizes
+    createNvlsConnection();
   }
 
   void setDevice() {
@@ -569,7 +591,45 @@ struct Options {
     // Prioritize locality: fill/use GPUs on the same node first
     CUDACHECK(cudaSetDevice(rank % num_devices_per_node));
   }
-    
+
+  void createP2PConnections() {
+    // Create a bootstrapped communicator
+    bootstrap = std::shared_ptr<mscclpp::TcpBootstrap>(new mscclpp::TcpBootstrap(rank, num_ranks));
+    bootstrap->initialize("127.0.0.1:50053");
+    communicator = std::shared_ptr<mscclpp::Communicator>(new mscclpp::Communicator(bootstrap));
+
+    // Create p2p connections
+    mscclpp::Transport transport = mscclpp::Transport::CudaIpc;
+    mscclpp::EndpointConfig local_endpoint_config(transport);
+    std::vector<mscclpp::NonblockingFuture<std::shared_ptr<mscclpp::Connection>>> future_connections;
+    for (int remote_rank = 0; remote_rank < num_ranks; remote_rank++) {
+      if (remote_rank != rank) {
+        future_connections.emplace_back(communicator->connectOnSetup(remote_rank, 0, local_endpoint_config));
+      }
+    }
+
+    // Setup the communicator with the p2p connections
+    communicator->setup();
+
+    // 1 less because there is no future_connections for the local rank
+    for (int i = 0; i < num_ranks - 1; i++) {
+      p2p_connections.emplace_back(future_connections[i].get());
+      p2p_semaphores.emplace_back(mscclpp::SmDevice2DeviceSemaphore(*communicator, p2p_connections[i]));
+    }
+
+    // Setup the communicator again with the semaphores
+    communicator->setup();
+
+    std::vector<mscclpp::SmDevice2DeviceSemaphore::DeviceHandle> p2p_device_semaphores;
+    // 1 less because there is no p2p_semaphores for the local rank
+    for (int i = 0; i < num_ranks - 1; i++) {
+      p2p_device_semaphores.emplace_back(p2p_semaphores[i].deviceHandle());
+    }
+    assert(num_ranks <= kMaxNumRanks);
+    cudaMemcpyToSymbol(deviceSemaphores, p2p_device_semaphores.data(), 
+                       sizeof(mscclpp::SmDevice2DeviceSemaphore::DeviceHandle) * (num_ranks - 1));
+  }
+
   // assumes one MPI process per GPU
   void createNCCLComm() {
     ncclUniqueId id;
@@ -580,6 +640,33 @@ struct Options {
     MPICHECK(MPI_Bcast((void *)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
 
     NCCLCHECK(ncclCommInitRank(&nccl_comm, num_ranks, id, rank));
+  }
+
+  void createNvlsConnection() {
+    // only supports 1 node currently
+    assert(num_ranks == num_devices_per_node);
+    size_t output_buffer_size = problem_size2.m() * problem_size2.n() * sizeof(ElementOutput);
+
+    if (rank == 0) {
+      nvls_connection = std::make_shared<mscclpp::NvlsConnection>(output_buffer_size, num_devices_per_node);
+         
+      // output_buffer_size should be a multiple of the required minimum alignment
+      // because the allocation is handled/managed by cutlass::DeviceAllocation
+      assert(output_buffer_size % nvls_connection.getMultiCastMinGranularity() == 0);
+      
+      auto serialized = nvls_connection->serialize();
+      for (int i = 1; i < num_ranks; i++) {
+        MPICHECK(MPI_Send(serialized.data(), static_cast<int>(serialized.size()), MPI_BYTE, i, 0, MPI_COMM_WORLD));
+      }
+    } else {
+      std::vector<char> serialized(output_buffer_size);
+      MPICHECK(MPI_Recv(serialized.data(), static_cast<int>(serialized.size()), MPI_BYTE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+      nvls_connection = std::make_shared<mscclpp::NvlsConnection>(serialized);
+    }
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    nvls_connection->addDevice();
+    MPI_Barrier(MPI_COMM_WORLD);
   }
 
   bool valid() {
@@ -602,7 +689,14 @@ struct Options {
       reference_check = false;
     }
 
+    if (cmd.check_cmd_line_flag("use_nccl")) {
+      use_nccl = true;
+    }
+
     cmd.get_cmd_line_argument("iterations", iterations);
+    cmd.get_cmd_line_argument("comm_block_size", mscclpp_block_size);
+    cmd.get_cmd_line_argument("comm_grid_size", mscclpp_grid_size);
+    assert(mscclpp_block_size >= num_ranks);
   }
 
   void init_problem_sizes() {
@@ -648,7 +742,10 @@ struct Options {
       << "  --help                      If specified, displays this usage statement.\n\n"
       << "  --csv                       If specified, prints in CSV format.\n\n"
       << "  --do_not_verify             If specified, skips verification of results using a reference implemenation.\n\n"
-      << "  --iterations=<int>          Number of profiling iterations to perform.\n\n";
+      << "  --use_nccl                  If specified, uses NCCL AllReduce instead of MSCCLPP implementation.\n\n"
+      << "  --comm_block_size           Number of threads per block to use in MSCCLPP AllReduce (default 1024).\n\n"
+      << "  --comm_grid_size            Number of blocks per grid to use in MSCCLPP AllReduce (default 8).\n\n"
+      << "  --iterations=<int>          Number of profiling iterations to perform (default 20).\n\n";
 
     out << "\n\nExamples:\n\n"
       << "$ ./examples/61_ampere_halft_tensorop_gpt3/61_ampere_halft_tensorop_2mlp_gpt3_mlp_h<hidden_size>_b<batch_size>\n\n";
@@ -849,13 +946,13 @@ void InitializeStrides(cutlass::gemm::GemmCoord& problem_size1,
   *stride_a1  = cutlass::make_cute_packed_stride(StrideInputA1{}, 
                   cute::make_shape(problem_size1.m(), problem_size1.k(), Int<1>{}));
   *stride_b1  = cutlass::make_cute_packed_stride(StrideInputB1{}, 
-                  cute::make_shape(problem_size1.n(), problem_size1.k(), Int<1>{})); // TODO(roshan): swap n and k?
+                  cute::make_shape(problem_size1.n(), problem_size1.k(), Int<1>{}));
   *stride_d1  = cutlass::make_cute_packed_stride(StrideIntermediateD1{}, 
                   cute::make_shape(problem_size1.m(), problem_size1.n(), Int<1>{}));
   *stride_a2  = cutlass::make_cute_packed_stride(StrideInputA2{}, 
                   cute::make_shape(problem_size2.m(), problem_size2.k(), Int<1>{}));
   *stride_b2  = cutlass::make_cute_packed_stride(StrideIntermediateB2{}, 
-                  cute::make_shape(problem_size2.n(), problem_size2.k(), Int<1>{})); // TODO(roshan): swap n and k?
+                  cute::make_shape(problem_size2.n(), problem_size2.k(), Int<1>{}));
   *stride_o   = cutlass::make_cute_packed_stride(StrideOutput{}, 
                   cute::make_shape(problem_size2.m(), problem_size2.n(), Int<1>{}));
 }
@@ -1071,6 +1168,10 @@ int run(Options &options) {
     &block_a1, &block_b1, &block_a2, &block_b2, &block_o,
     &block_ref_a1, &block_ref_b1, &block_ref_a2, &block_ref_b2, &block_ref_o);
 
+  // Create the multicast pointer for the output tensor
+  std::shared_ptr<char> block_o_mc = options.nvls_connection->bindAllocatedCuda(block_o.getHandle(), block_o.bytes());
+  ElementOutput* block_o_mc_ptr = (ElementOutput*)block_o_mc.get();
+
   // Create the GEMM ops
   Gemm1 gemm_op1;
   Gemm2 gemm_op2;
@@ -1150,12 +1251,18 @@ int run(Options &options) {
       return -1;
     }
     
-    // TODO(roshan): Replace with MSCCLPP AllReduce
     // Launch all-reduce on each device on this process/GPU
-    NCCLCHECK(ncclAllReduce((const void*)block_o.get(), (void*)block_o.get(), 
-          block_o.size(), ElementNcclAllreduce, ncclSum,
-          nccl_comm, stream));
-
+    if (options.use_nccl) {
+      NCCLCHECK(ncclAllReduce((const void*)block_o.get(), (void*)block_o.get(), 
+            block_o.size(), ElementNcclAllreduce, ncclSum,
+            nccl_comm, stream));
+    } else {
+      int num_threads_per_block = options.mscclpp_block_size;
+      int num_blocks = options.mscclpp_grid_size;
+      mscclppAllReduceInplaceSum<<<num_blocks, num_threads_per_block, 0, stream>>>(block_o_mc_ptr, block_o.size(),
+                                                                                   rank, num_ranks);
+    }
+    
     // Record an event when the AllReduce is complete
     result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 3], stream);
     if (result.error != cudaSuccess) {
@@ -1314,7 +1421,7 @@ int run(Options &options) {
       os << gemm2_time_ms << "\t\t\t| ";
       os << comm_time_ms << "\t\t\t| ";
       os << runtime_ms << "\t\t\t| ";
-      os << options.gflops(runtime_ms + comm_time_ms / 1000.0) << std::endl;
+      os << options.gflops(runtime_ms / 1000.0) << std::endl;
       std::cout << os.str();
 
       MPI_Barrier(MPI_COMM_WORLD);

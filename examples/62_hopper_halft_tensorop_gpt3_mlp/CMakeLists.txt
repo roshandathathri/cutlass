@@ -59,6 +59,7 @@ function(cutlass_mpi_example_add_executable NAME HIDDEN_SIZE BATCH_SIZE)
     cuda
     nccl
     MPI::MPI_CXX
+    mscclpp
     )
 
   target_include_directories(
