@@ -1177,7 +1177,7 @@ int run(Options &options) {
     nccl_comm);
 
   // Create the multicast pointer for the output tensor
-  std::shared_ptr<char> block_o_mc = options.nvls_connection->bindAllocatedCuda(block_o.getHandle(), block_o.bytes());
+  std::shared_ptr<char> block_o_mc = options.nvls_connection->bindAllocatedCuda(block_o.getHandle(), block_o.bytes_allocated());
   ElementOutput* block_o_mc_ptr = (ElementOutput*)block_o_mc.get();
 
   // Create the GEMM ops

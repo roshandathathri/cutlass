@@ -311,6 +311,11 @@ public:
     return bytes(capacity);
   }
 
+  /// Returns the number of bytes allocated on the device
+  size_t bytes_allocated() const {
+    return smart_ptr.get()->bytes;
+  }
+
   /// Returns a pointer to the managed allocation
   T* operator->() const { return smart_ptr.get()->ptr; }
 
