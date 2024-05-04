@@ -17,7 +17,7 @@ __device__ mscclpp::SmDevice2DeviceSemaphoreDeviceHandle deviceSemaphores[kMaxNu
 // Should be called by all threads on all devices
 // Assumes \p num_threads_per_block >= \p num_ranks
 // Assumes \p num_ranks <= kMaxNumRanks
-__device__ void memoryBarrier(
+__device__ void barrier(
         int thread_id, int block_id, int num_threads_per_block, int num_blocks,
         int num_ranks) {
   // wait for every device
@@ -31,9 +31,6 @@ __device__ void memoryBarrier(
 
   // wait for every thread in every block on this device
   deviceSyncer.sync(num_blocks);
-
-  // memory fence across all threads on all devices
-  __threadfence_system();
 }
 
 // -------------------------------------------
@@ -52,8 +49,8 @@ __global__ void __launch_bounds__(1024, 1)
   int num_threads_per_block = blockDim.x;
   int num_blocks = gridDim.x;
 
-  // start with a memory barrier to ensure all devices have written their values to their own memory
-  memoryBarrier(tid, bid, num_threads_per_block, num_blocks, num_ranks);
+  // start with a barrier to ensure all devices have written their values to their own memory
+  barrier(tid, bid, num_threads_per_block, num_blocks, num_ranks);
 
   int rank_start = ((int64_t)num_elements * (int64_t)my_rank) / (int64_t)num_ranks;
   int rank_end = ((int64_t)num_elements * (int64_t)(my_rank + 1)) / (int64_t)num_ranks;
@@ -64,11 +61,11 @@ __global__ void __launch_bounds__(1024, 1)
 
   for (int idx = rank_start + thread_offset; idx < rank_end; idx += thread_step) {
     uint4 val; // fits 8 cutlass::half_t elements; i.e., 4 half2 elements
-    mscclpp::DeviceMulticastPointerDeviceHandle::multimemLoad(val, (half2*)(mc_ptr + idx));
-    mscclpp::DeviceMulticastPointerDeviceHandle::multimemStore(val, (half2*)(mc_ptr + idx));
+    mscclpp::DeviceMulticastPointerDeviceHandle::multimemLoad(val, (half2*)(mc_ptr + idx)); // Load + Reduce
+    mscclpp::DeviceMulticastPointerDeviceHandle::multimemStore(val, (half2*)(mc_ptr + idx)); // Store
   }
 
-  // end with a memory barrier to ensure all devices can now read their values from their own memory
-  memoryBarrier(tid, bid, num_threads_per_block, num_blocks, num_ranks);
+  // end with a barrier to ensure all devices can now read their values from their own memory
+  barrier(tid, bid, num_threads_per_block, num_blocks, num_ranks);
 #endif
 }
