@@ -731,6 +731,8 @@ struct Options {
 
     printf("[%d,%d] HALFT tensor op AllReduce\n", \
       problem_size2.m(),  problem_size2.n());
+
+    fflush(stdout);
   }
 
   /// Prints the usage statement.
@@ -968,7 +970,8 @@ void InitializeMatrices(cutlass::gemm::GemmCoord& problem_size1,
   cutlass::DeviceAllocation<ElementReference>* block_ref_b1,
   cutlass::DeviceAllocation<ElementReference>* block_ref_a2,
   cutlass::DeviceAllocation<ElementReference>* block_ref_b2,
-  cutlass::DeviceAllocation<ElementReference>* block_ref_o) {
+  cutlass::DeviceAllocation<ElementReference>* block_ref_o, 
+  ncclComm_t& nccl_comm) {
 
   assert(problem_size1.m() == problem_size2.k());
   assert(problem_size1.n() == problem_size2.n());
@@ -1022,7 +1025,7 @@ void InitializeMatrices(cutlass::gemm::GemmCoord& problem_size1,
     block_o->get(), 
     block_o->size(), 
     params_o);
-
+  
   // Copy randomly generated values from input matrices to inputs for the reference kernel
   // The corresponding types of the tensors in the two kernels might be different
   assert(block_a1->size() == block_ref_a1->size());
@@ -1042,6 +1045,10 @@ void InitializeMatrices(cutlass::gemm::GemmCoord& problem_size1,
     block_ref_o->get(), 
     block_ref_o->size(), 
     params_ref);
+  
+  NCCLCHECK(ncclAllReduce((const void*)block_ref_o->get(), (void*)block_ref_o->get(), 
+    block_ref_o->size(), ElementNcclAllreduceReference, ncclSum,
+    nccl_comm, 0));
 }
 
 Arguments1 ConstructGemm1(cutlass::gemm::GemmCoord& problem_size1, 
@@ -1166,7 +1173,8 @@ int run(Options &options) {
   // Initialize matrices on this process/GPU
   InitializeMatrices(problem_size1, problem_size2,
     &block_a1, &block_b1, &block_a2, &block_b2, &block_o,
-    &block_ref_a1, &block_ref_b1, &block_ref_a2, &block_ref_b2, &block_ref_o);
+    &block_ref_a1, &block_ref_b1, &block_ref_a2, &block_ref_b2, &block_ref_o, 
+    nccl_comm);
 
   // Create the multicast pointer for the output tensor
   std::shared_ptr<char> block_o_mc = options.nvls_connection->bindAllocatedCuda(block_o.getHandle(), block_o.bytes());
