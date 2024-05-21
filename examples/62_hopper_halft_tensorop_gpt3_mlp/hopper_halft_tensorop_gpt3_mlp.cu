@@ -533,6 +533,7 @@ struct Options {
 
   bool reference_check;
   bool use_nccl; // use NCCL instead of MSCCLPP
+  bool inplace_mscclpp; // use MSCCLPP in-place allreduce
   int iterations;
   int mscclpp_block_size;
   int mscclpp_grid_size;
@@ -559,6 +560,7 @@ struct Options {
     batch_size(BATCH_SIZE),
     reference_check(true),
     use_nccl(false),
+    inplace_mscclpp(true),
     iterations(20),
     mscclpp_block_size(1024), 
     mscclpp_grid_size(8) { 
@@ -571,11 +573,11 @@ struct Options {
     // Set device
     setDevice();
 
-    // Create MSCCL peer to peer connections
-    createP2PConnections();
-
     // Create NCCL communicator
     createNCCLComm();
+
+    // Create MSCCL peer to peer connections
+    createP2PConnections();
 
     // Now initialize problem sizes
     init_problem_sizes();
@@ -590,6 +592,18 @@ struct Options {
 
     // Prioritize locality: fill/use GPUs on the same node first
     CUDACHECK(cudaSetDevice(rank % num_devices_per_node));
+  }
+
+  // assumes one MPI process per GPU
+  void createNCCLComm() {
+    ncclUniqueId id;
+    // generating NCCL unique ID at one process and broadcasting it to all
+    if (rank == 0) {
+      ncclGetUniqueId(&id);
+    }
+    MPICHECK(MPI_Bcast((void *)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
+
+    NCCLCHECK(ncclCommInitRank(&nccl_comm, num_ranks, id, rank));
   }
 
   void createP2PConnections() {
@@ -628,18 +642,6 @@ struct Options {
     assert(num_ranks <= kMaxNumRanks);
     cudaMemcpyToSymbol(deviceSemaphores, p2p_device_semaphores.data(), 
                        sizeof(mscclpp::SmDevice2DeviceSemaphore::DeviceHandle) * (num_ranks - 1));
-  }
-
-  // assumes one MPI process per GPU
-  void createNCCLComm() {
-    ncclUniqueId id;
-    // generating NCCL unique ID at one process and broadcasting it to all
-    if (rank == 0) {
-      ncclGetUniqueId(&id);
-    }
-    MPICHECK(MPI_Bcast((void *)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
-
-    NCCLCHECK(ncclCommInitRank(&nccl_comm, num_ranks, id, rank));
   }
 
   void createNvlsConnection() {
@@ -691,6 +693,8 @@ struct Options {
 
     if (cmd.check_cmd_line_flag("use_nccl")) {
       use_nccl = true;
+    } else if (cmd.check_cmd_line_flag("use_multicast_reduce")) {
+      inplace_mscclpp = false;
     }
 
     cmd.get_cmd_line_argument("iterations", iterations);
@@ -745,6 +749,7 @@ struct Options {
       << "  --csv                       If specified, prints in CSV format.\n\n"
       << "  --do_not_verify             If specified, skips verification of results using a reference implemenation.\n\n"
       << "  --use_nccl                  If specified, uses NCCL AllReduce instead of MSCCLPP implementation.\n\n"
+      << "  --use_multicast_reduce      If specified, uses multicast reduce-based AllReduce with separate output memory.\n\n"
       << "  --comm_block_size           Number of threads per block to use in MSCCLPP AllReduce (default 1024).\n\n"
       << "  --comm_grid_size            Number of blocks per grid to use in MSCCLPP AllReduce (default 8).\n\n"
       << "  --iterations=<int>          Number of profiling iterations to perform (default 20).\n\n";
@@ -965,6 +970,7 @@ void InitializeMatrices(cutlass::gemm::GemmCoord& problem_size1,
   cutlass::DeviceAllocation<ElementInputB1>* block_b1,
   cutlass::DeviceAllocation<ElementInputA2>* block_a2,
   cutlass::DeviceAllocation<ElementIntermediateB2>* block_b2,
+  cutlass::DeviceAllocation<ElementOutput>* block_partial_o,
   cutlass::DeviceAllocation<ElementOutput>* block_o,
   cutlass::DeviceAllocation<ElementReference>* block_ref_a1,
   cutlass::DeviceAllocation<ElementReference>* block_ref_b1,
@@ -980,6 +986,7 @@ void InitializeMatrices(cutlass::gemm::GemmCoord& problem_size1,
   block_b1->reset(problem_size1.k() * problem_size1.n());
   block_a2->reset(problem_size2.m() * problem_size2.k());
   block_b2->reset(problem_size2.k() * problem_size2.n());
+  block_partial_o->reset(problem_size2.m() * problem_size2.n());
   block_o->reset(problem_size2.m() * problem_size2.n());
   
   block_ref_a1->reset(problem_size1.m() * problem_size1.k());
@@ -1022,10 +1029,14 @@ void InitializeMatrices(cutlass::gemm::GemmCoord& problem_size1,
     params_b2);
   typename ZeroFunc<ElementOutput>::Params params_o;
   cutlass::reference::device::BlockForEach<ElementOutput, ZeroFunc<ElementOutput>>(
+    block_partial_o->get(), 
+    block_partial_o->size(), 
+    params_o);
+  cutlass::reference::device::BlockForEach<ElementOutput, ZeroFunc<ElementOutput>>(
     block_o->get(), 
     block_o->size(), 
     params_o);
-  
+
   // Copy randomly generated values from input matrices to inputs for the reference kernel
   // The corresponding types of the tensors in the two kernels might be different
   assert(block_a1->size() == block_ref_a1->size());
@@ -1158,6 +1169,7 @@ int run(Options &options) {
   cutlass::DeviceAllocation<ElementInputB1> block_b1;
   cutlass::DeviceAllocation<ElementInputA2> block_a2;
   cutlass::DeviceAllocation<ElementIntermediateB2> block_b2;
+  cutlass::DeviceAllocation<ElementOutput> block_partial_o;
   cutlass::DeviceAllocation<ElementOutput> block_o;
   // Create matrices on this process/GPU for the reference kernel
   cutlass::DeviceAllocation<ElementReference> block_ref_a1;
@@ -1172,7 +1184,7 @@ int run(Options &options) {
 
   // Initialize matrices on this process/GPU
   InitializeMatrices(problem_size1, problem_size2,
-    &block_a1, &block_b1, &block_a2, &block_b2, &block_o,
+    &block_a1, &block_b1, &block_a2, &block_b2, &block_partial_o, &block_o,
     &block_ref_a1, &block_ref_b1, &block_ref_a2, &block_ref_b2, &block_ref_o, 
     nccl_comm);
 
@@ -1189,11 +1201,14 @@ int run(Options &options) {
 
   // Construct the GEMM ops on this process/GPU
   Arguments1 arguments1 = ConstructGemm1(problem_size1, 
-    block_a1, block_b1, block_b2, 
+    block_a1, block_b1, 
+    block_b2, 
     stride_a1, stride_b1, stride_d1, 
     &gemm_op1, &workspace1);
   Arguments2 arguments2 = ConstructGemm2(problem_size2,
-    block_a2, block_b2, block_o,
+    // NCCL and inplace MSCCLPP do not use a separate partial output tensor
+    block_a2, block_b2, 
+    (options.use_nccl || options.inplace_mscclpp) ? block_o : block_partial_o,
     stride_a2, stride_b2, stride_o,
     &gemm_op2, &workspace2);
     
@@ -1230,6 +1245,16 @@ int run(Options &options) {
     status = gemm_op2.initialize(arguments2, workspace2.get());
     CUTLASS_CHECK(status);
 
+    if (!options.use_nccl && !options.inplace_mscclpp) {
+      // Zero out the output tensor because partial outputs from each device are reduced onto it
+      typename ZeroFunc<ElementOutput>::Params params_o;
+      cutlass::reference::device::BlockForEach<ElementOutput, ZeroFunc<ElementOutput>>(
+        block_o.get(), 
+        block_o.size(), 
+        params_o, 
+        0, 0, stream);
+    }
+
     // Record an event at the start of the GEMM
     result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 0], stream);
     if (result.error != cudaSuccess) {
@@ -1264,13 +1289,18 @@ int run(Options &options) {
       NCCLCHECK(ncclAllReduce((const void*)block_o.get(), (void*)block_o.get(), 
             block_o.size(), ElementNcclAllreduce, ncclSum,
             nccl_comm, stream));
-    } else {
+    } else if (options.inplace_mscclpp) {
       int num_threads_per_block = options.mscclpp_block_size;
       int num_blocks = options.mscclpp_grid_size;
       mscclppAllReduceInplaceSum<<<num_blocks, num_threads_per_block, 0, stream>>>(block_o_mc_ptr, block_o.size(),
                                                                                    rank, num_ranks);
-    }
-    
+    } else {
+      int num_threads_per_block = options.mscclpp_block_size;
+      int num_blocks = options.mscclpp_grid_size;
+      assert(block_partial_o.size() == block_o.size());
+      mscclppAllReduceSum<<<num_blocks, num_threads_per_block, 0, stream>>>(block_partial_o.get(), block_o_mc_ptr, block_o.size(),
+                                                                            rank, num_ranks);
+    }    
     // Record an event when the AllReduce is complete
     result.error = cudaEventRecord(events[iter * kNumEventsPerIteration + 3], stream);
     if (result.error != cudaSuccess) {
