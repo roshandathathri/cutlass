@@ -39,6 +39,8 @@ __device__ void barrier(
 // -------------------------------------------
 
 // Assumes \p num_ranks <= kMaxNumRanks
+// Assumes \p kVecSize is 1, 2, 4, or 8 (default 8)
+template <int kVecSize = 8>
 __global__ void __launch_bounds__(1024, 1)
     mscclppAllReduceInplaceSum(
         cutlass::half_t* mc_ptr, size_t num_elements, 
@@ -58,14 +60,27 @@ __global__ void __launch_bounds__(1024, 1)
   int rank_start = ((int64_t)num_elements * (int64_t)my_rank) / (int64_t)num_ranks;
   int rank_end = ((int64_t)num_elements * (int64_t)(my_rank + 1)) / (int64_t)num_ranks;
 
-  constexpr int kVecSize = 8;
   int thread_offset = (bid * num_threads_per_block + tid) * kVecSize;
   int thread_step = (num_threads_per_block * num_blocks) * kVecSize; // number of threads * vector size
 
   for (int idx = rank_start + thread_offset; idx < rank_end; idx += thread_step) {
-    uint4 val; // fits 8 cutlass::half_t elements; i.e., 4 half2 elements
-    mscclpp::DeviceMulticastPointerDeviceHandle::multimemLoadReduce(val, (half2*)(mc_ptr + idx));
-    mscclpp::DeviceMulticastPointerDeviceHandle::multimemStore(val, (half2*)(mc_ptr + idx));
+    if constexpr (kVecSize == 8) {
+      uint4 val; // fits 8 cutlass::half_t elements; i.e., 4 half2 elements
+      mscclpp::DeviceMulticastPointerDeviceHandle::multimemLoadReduce(val, (half2*)(mc_ptr + idx));
+      mscclpp::DeviceMulticastPointerDeviceHandle::multimemStore(val, (half2*)(mc_ptr + idx));
+    } else if constexpr (kVecSize == 4) {
+      uint2 val; // fits 4 cutlass::half_t elements; i.e., 2 half2 elements
+      mscclpp::DeviceMulticastPointerDeviceHandle::multimemLoadReduce(val, (half2*)(mc_ptr + idx));
+      mscclpp::DeviceMulticastPointerDeviceHandle::multimemStore(val, (half2*)(mc_ptr + idx));
+    } else if constexpr (kVecSize == 2) {
+      uint1 val; // fits 2 cutlass::half_t elements; i.e., 1 half2 elements
+      mscclpp::DeviceMulticastPointerDeviceHandle::multimemLoadReduce(val, (half2*)(mc_ptr + idx));
+      mscclpp::DeviceMulticastPointerDeviceHandle::multimemStore(val, (half2*)(mc_ptr + idx));
+    } else if constexpr (kVecSize == 1) {
+      uint1 val; // fits 1 cutlass::half_t elements; i.e., 1 __half element
+      mscclpp::DeviceMulticastPointerDeviceHandle::multimemLoadReduce(val, (__half*)(mc_ptr + idx));
+      mscclpp::DeviceMulticastPointerDeviceHandle::multimemStore(val, (__half*)(mc_ptr + idx));
+    }
   }
 
   // end with a barrier to ensure all devices can now read their values 
