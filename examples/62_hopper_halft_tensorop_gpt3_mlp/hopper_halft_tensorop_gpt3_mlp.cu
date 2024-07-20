@@ -81,6 +81,7 @@
 #include "cutlass/util/reference/device/tensor_fill.h"
 #include "cutlass/util/reference/device/tensor_relu.h"
 
+#include <mscclpp/nvls.hpp>
 #include "mscclpp_allreduce.h"
 
 #include "helper.h"
