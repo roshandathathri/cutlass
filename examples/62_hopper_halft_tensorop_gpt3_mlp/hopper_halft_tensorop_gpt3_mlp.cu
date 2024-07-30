@@ -756,7 +756,7 @@ struct Options {
       << "  --iterations=<int>          Number of profiling iterations to perform (default 20).\n\n";
 
     out << "\n\nExamples:\n\n"
-      << "$ ./examples/61_ampere_halft_tensorop_gpt3/61_ampere_halft_tensorop_2mlp_gpt3_mlp_h<hidden_size>_b<batch_size>\n\n";
+      << "$ ./examples/62_hopper_halft_tensorop_gpt3/62_hopper_halft_tensorop_2mlp_gpt3_mlp_h<hidden_size>_b<batch_size>\n\n";
 
     return out;
   }

@@ -86,6 +86,13 @@ function(cutlass_mpi_example_add_executable NAME HIDDEN_SIZE BATCH_SIZE)
 endfunction()
 
 cutlass_mpi_example_add_executable(
+  hopper_halft_allreduce
+  0
+  0
+  hopper_halft_allreduce.cu
+  )
+
+cutlass_mpi_example_add_executable(
   62_hopper_halft_tensorop_gpt3_mlp
   12288
   2048
