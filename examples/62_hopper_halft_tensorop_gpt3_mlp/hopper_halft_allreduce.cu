@@ -192,7 +192,7 @@ struct Options {
   std::vector<mscclpp::SmDevice2DeviceSemaphore> p2p_semaphores;
   std::shared_ptr<mscclpp::NvlsConnection> nvls_connection;
 
-  Options():
+  Options(int argc, char const **args):
     help(false),
     csv(false),
     hidden_size(12288),
@@ -218,7 +218,10 @@ struct Options {
     // Create MSCCL peer to peer connections
     createP2PConnections();
 
-    // Now create NVLS Connection: requires output buffer size, which depends on problem sizes
+    // Parse command line to update hidden and batch size if needed
+    parse(argc, args);
+
+    // Now create NVLS Connection: requires output buffer size, which depends on hidden and batch sizes
     createNvlsConnection();
   }
 
@@ -802,9 +805,7 @@ int main(int argc, const char **argv) {
   // Parse options
   //
 
-  Options options;
-
-  options.parse(argc, argv);
+  Options options(argc, argv);
 
   if (options.help) {
     options.print_usage(std::cout) << std::endl;
