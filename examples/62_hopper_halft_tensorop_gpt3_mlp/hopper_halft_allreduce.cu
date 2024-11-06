@@ -669,13 +669,13 @@ int run(Options &options) {
     } else if (options.inplace_mscclpp) {
       int num_threads_per_block = options.mscclpp_block_size;
       int num_blocks = options.mscclpp_grid_size;
-      mscclppAllReduceInplaceSum<<<num_blocks, num_threads_per_block, 0, stream>>>(block_o_mc_ptr, block_o.size(),
+      mscclppNVLSAllReduceInplaceSum<<<num_blocks, num_threads_per_block, 0, stream>>>(block_o_mc_ptr, block_o.size(),
                                                                                    rank, num_ranks);
     } else {
       int num_threads_per_block = options.mscclpp_block_size;
       int num_blocks = options.mscclpp_grid_size;
       assert(block_input.size() == block_o.size());
-      mscclppAllReduceSum<<<num_blocks, num_threads_per_block, 0, stream>>>(block_input.get(), block_o_mc_ptr, block_o.size(),
+      mscclppNVLSAllReduceSum<<<num_blocks, num_threads_per_block, 0, stream>>>(block_input.get(), block_o_mc_ptr, block_o.size(),
                                                                             rank, num_ranks);
     }    
 

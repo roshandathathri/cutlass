@@ -162,7 +162,7 @@ public:
   {
     using namespace cute;
     using X = Underscore;
-
+    //Using this epilogue
     static_assert(cute::rank(ProblemShapeMNKL{}) == 4, "ProblemShapeMNKL must be rank 4");
     static_assert(is_static<BlockShapeMNK>::value, "ThreadBlock tile shape must be static");
     static_assert(cute::rank(BlockShapeMNK{}) == 3, "BlockShapeMNK must be rank 3");
@@ -217,6 +217,7 @@ public:
       for (int i = 0; i < size(accumulators); ++i) {
         if (elem_less(tCcD(i), make_coord(get<0>(residue_mnk), get<1>(residue_mnk)))) {
           tCgD(i) = epilogue_op(accumulators(i));
+          //Using this epilogue
         }
       }
     }

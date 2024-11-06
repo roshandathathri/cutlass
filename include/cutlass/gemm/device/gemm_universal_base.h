@@ -332,7 +332,7 @@ public:
     // Configure grid and block dimensions
     dim3 block(GemmKernel::kThreadCount, 1, 1);
     dim3 grid = params_.get_grid_dims();
-
+printf("335\n");
     // Launch kernel
     CUTLASS_TRACE_HOST("  "
       "grid: (" << grid << "), "

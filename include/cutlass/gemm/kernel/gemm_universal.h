@@ -472,7 +472,7 @@ public:
   /// Executes one GEMM with an externally-provided swizzling function
   CUTLASS_DEVICE
   void run_with_swizzle(Params const &params, SharedStorage &shared_storage, ThreadblockSwizzle& threadblock_swizzle) {
-
+    if (threadIdx.x == 0) printf("475\n");
     cutlass::gemm::GemmCoord threadblock_tile_offset =
         threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
 

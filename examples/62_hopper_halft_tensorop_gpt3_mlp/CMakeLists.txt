@@ -49,6 +49,7 @@ function(cutlass_mpi_example_add_executable NAME HIDDEN_SIZE BATCH_SIZE)
   target_compile_definitions(${FULL_NAME} PRIVATE HIDDEN_SIZE=${HIDDEN_SIZE} BATCH_SIZE=${BATCH_SIZE})
 
   add_dependencies(cutlass_examples ${FULL_NAME})
+  target_link_directories(${FULL_NAME} PRIVATE "/usr/local/mscclpp/lib/")
 
   target_link_libraries(
     ${FULL_NAME}
@@ -67,6 +68,7 @@ function(cutlass_mpi_example_add_executable NAME HIDDEN_SIZE BATCH_SIZE)
     PRIVATE
     ${CUTLASS_EXAMPLES_COMMON_SOURCE_DIR}
     ${CUTLASS_EXAMPLES_UTILS_DIR}
+    "/usr/local/mscclpp/include"
     )
 
   install(

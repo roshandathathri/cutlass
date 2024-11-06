@@ -413,6 +413,7 @@ public:
 
   /// Runs the kernel using initialized state.
   Status operator()(cudaStream_t stream = nullptr) {
+    printf("416\n");
     return run(stream);
   }
 
@@ -421,7 +422,7 @@ public:
     Arguments const &args, 
     void *workspace = nullptr, 
     cudaStream_t stream = nullptr) {
-    
+    printf("424\n");
     Status status = initialize(args, workspace, stream);
     
     if (status == Status::kSuccess) {

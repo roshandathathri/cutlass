@@ -139,6 +139,10 @@ public:
     EpilogueArguments epilogue{};
     KernelHardwareInfo hw_info{};
     TileSchedulerArguments scheduler{};
+
+    #ifdef FUSE_GEMM_ALLREDUCE
+
+    #endif
   };
 
   // Kernel entry point API
@@ -147,6 +151,9 @@ public:
     ProblemShape problem_shape;
     MainloopParams mainloop;
     EpilogueParams epilogue;
+    #ifdef FUSE_GEMM_ALLREDUCE
+      
+    #endif
   };
 
   //
@@ -218,6 +225,7 @@ public:
   operator()(Params const& params, char* smem_buf) {
     using namespace cute;
     using X = Underscore;
+    if (threadIdx.x == 0) printf("221\n"); 
 
     // Any Tensor Op MMA Atom in the WGMMA ISA is arch conditional to sm90a.
     #if ! defined(__CUDA_ARCH_FEAT_SM90_ALL)
@@ -428,7 +436,9 @@ public:
         warp_group_thread_idx,
         shared_storage.tensors.epilogue
       );
-
+    #ifdef FUSE_GEMM_ALLREDUCE
+      
+    #endif
       collective_epilogue.store_tail(
         epi_load_pipeline,
         epi_load_pipe_consumer_state_next,

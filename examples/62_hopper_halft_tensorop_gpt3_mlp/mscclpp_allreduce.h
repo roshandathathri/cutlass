@@ -42,7 +42,7 @@ __device__ void barrier(
 // Assumes \p kVecSize is 1, 2, 4, or 8 (default 8)
 template <int kVecSize = 8>
 __global__ void __launch_bounds__(1024, 1)
-    mscclppAllReduceInplaceSum(
+    mscclppNVLSAllReduceInplaceSum(
         cutlass::half_t* mc_ptr, size_t num_elements, 
         int my_rank, int num_ranks) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
@@ -92,7 +92,7 @@ __global__ void __launch_bounds__(1024, 1)
 
 // Assumes \p num_ranks <= kMaxNumRanks
 __global__ void __launch_bounds__(1024, 1)
-    mscclppAllReduceSum(
+    mscclppNVLSAllReduceSum(
         cutlass::half_t* in_local_ptr, cutlass::half_t* out_mc_ptr, size_t num_elements, 
         int my_rank, int num_ranks) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900

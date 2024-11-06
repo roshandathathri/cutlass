@@ -289,7 +289,7 @@ public:
   operator()(Params const& params, char* smem_buf) {
     using namespace cute;
     using X = Underscore;
-
+    // Using this kernel
     // Any Tensor Op MMA Atom in the WGMMA ISA is arch conditional to sm90a.
     #if ! defined(__CUDA_ARCH_FEAT_SM90_ALL)
       if constexpr(size<0>(typename TiledMma::AtomShape_MNK{}) == 64) {
@@ -418,7 +418,7 @@ public:
     // In a warp specialized kernel, collectives expose data movement and compute operations separately
     CollectiveMainloop collective_mainloop;
     CollectiveEpilogue collective_epilogue(params.epilogue, shared_storage.tensors.epilogue);
-
+    // typename TileScheduler::x y;
     // Prepare and partition the input tensors. Expects a tuple of tensors where:
     // get<0>(tiled_tensors) is the tma tensor A after local tiling so that it has shape (BLK_M,BLK_K,m,k,l)
     // get<1>(tiled_tensors) is the tma tensor B after local tiling so that it has shape (BLK_N,BLK_K,n,k,l)
@@ -579,7 +579,12 @@ public:
           epi_store_pipe_producer_state = epi_store_pipe_producer_state_next;
           do_store_tail = true;
         }
-
+        // if (threadIdx.x%32 == 0 && threadIdx.x <= 128) {
+        //   printf("583 %d : %d %d -> %d %d \n", work_tile_info.M_idx, work_tile_info.N_idx);
+        // }
+        #ifdef FUSE_GEMM_ALLREDUCE
+  
+        #endif
         // Get next work tile
         work_tile_info = fetch_next_work(work_tile_info, scheduler);
       } // Scheduler work fetch loop
